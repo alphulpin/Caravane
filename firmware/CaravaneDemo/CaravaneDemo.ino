@@ -113,6 +113,7 @@ void rafraichirEcran() {
 void entrerEnVeille() {
   Serial.printf("Veille profonde pour %lu s\n", (unsigned long)reglages.veilleS());
   Serial.flush();
+  digitalWrite(BROCHE_LED, LOW);
   ecran.eteindre();                                  // coupe aussi Ve, donc les capteurs
   esp_sleep_enable_timer_wakeup((uint64_t)reglages.veilleS() * 1000000ULL);
   esp_sleep_enable_ext0_wakeup((gpio_num_t)BROCHE_BOUTON, 0);   // bouton USER
@@ -136,6 +137,8 @@ void suivreSecteur() {
 void setup() {
   Serial.begin(115200);
   pinMode(BROCHE_BOUTON, INPUT_PULLUP);
+  pinMode(BROCHE_LED, OUTPUT);
+  digitalWrite(BROCHE_LED, LOW);                     // LED éteinte hors connexion Bluetooth
   rtc_gpio_deinit((gpio_num_t)BROCHE_SECTEUR);       // rend la broche au GPIO normal après la veille
   pinMode(BROCHE_SECTEUR, INPUT_PULLUP);
   reglages.charger();
@@ -155,6 +158,7 @@ void setup() {
 
 void loop() {
   ble.entretenir();
+  digitalWrite(BROCHE_LED, ble.connecte() ? HIGH : LOW);
 
   if (ble.activiteDepuisDernierAppel() || digitalRead(BROCHE_BOUTON) == LOW) derniereActiviteMs = millis();
 

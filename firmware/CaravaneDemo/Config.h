@@ -9,6 +9,7 @@ constexpr uint8_t BROCHE_OLED_SCL = 18;
 constexpr uint8_t BROCHE_OLED_RST = 21;
 constexpr uint8_t BROCHE_VEXT     = 36;  // LOW = écran alimenté
 constexpr uint8_t BROCHE_BOUTON   = 0;   // bouton USER (PRG), actif à l'état bas
+constexpr uint8_t BROCHE_LED      = 35;  // LED blanche : allumée seulement quand un téléphone est connecté
 
 // Capteurs CJMCU-8128 (second bus I2C, alimentés par Ve = coupé pendant la veille)
 //   CJMCU VCC -> Ve (J2 broche 3 ou 4)     CJMCU GND -> GND
