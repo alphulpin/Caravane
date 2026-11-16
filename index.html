@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1d2a30">
+<title>Caravane – réglage Bluetooth</title>
+<!--
+  Client Web Bluetooth pour la carte Heltec WiFi LoRa 32 V3 de la caravane.
+  À ouvrir dans Chrome sur Android, depuis une adresse https:// (ou http://localhost).
+
+  PROTOCOLE (à respecter côté firmware)
+  Service BLE : Nordic UART Service (NUS)
+    service 6E400001-B5A3-F393-E0A9-E50E24DCCA9E
+    RX      6E400002-…  (écriture : téléphone -> carte)
+    TX      6E400003-…  (notification : carte -> téléphone)
+  Nom annoncé par la carte : commence par "Caravane".
+  Messages : une ligne JSON terminée par "\n". Une ligne peut arriver en plusieurs
+  paquets ; chaque côté accumule jusqu'au "\n".
+
+  Téléphone -> carte
+    {"c":"cfg?"}                                         demande les réglages
+    {"c":"set","v_coup":11.8,"v_rep":12.3,"reveil":15}   écrit les réglages
+    {"c":"heure","ts":1794812640,"tz":60}                heure UTC (s) + décalage local (min)
+    {"c":"mes"}                                          lance une mesure tout de suite
+    {"c":"veille"}                                       coupe le Bluetooth, retour en veille
+
+  Carte -> téléphone
+    {"t":"mes","vbat":12.62,"ibat":0.85,"sect":0,"vent":1,
+     "temp":18.4,"hum":61,"ts":1794812640,"file":3}      à chaque cycle de mesure
+        vbat V, ibat A, sect 1 = secteur présent, vent 1 = 12 V ventilation alimenté,
+        temp °C, hum %, ts heure carte UTC (s), file = mesures en mémoire non envoyées
+    {"t":"cfg","v_coup":11.8,"v_rep":12.3,"reveil":15}   réglages en vigueur
+        v_coup : coupe la ventilation sous cette tension (V)
+        v_rep  : la rétablit au-dessus de cette tension (V)
+        reveil : période de réveil sur batterie (min)
+    {"t":"ok","c":"set"}                                 commande acceptée
+    {"t":"err","msg":"texte"}                            commande refusée
+-->
+<style>
+/* Tableau de bord d'instrument : une colonne, tension batterie en tête, réglages dessous. */
+:root{
+  --fond:#eef1f0; --carte:#ffffff; --trait:#d3dad8; --texte:#172126; --doux:#5b6a70;
+  --accent:#0f6e7a; --sur-accent:#ffffff;
+  --bon:#1f7a45; --alerte:#a86400; --critique:#b3261e;
+  --mono: ui-monospace, "SF Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --fond:#12191c; --carte:#1b2529; --trait:#2f3d43; --texte:#e6ecea; --doux:#93a3a8;
+    --accent:#4fb6c2; --sur-accent:#08181b;
+    --bon:#5fc388; --alerte:#e0a443; --critique:#f0766d;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --fond:#12191c; --carte:#1b2529; --trait:#2f3d43; --texte:#e6ecea; --doux:#93a3a8;
+  --accent:#4fb6c2; --sur-accent:#08181b;
+  --bon:#5fc388; --alerte:#e0a443; --critique:#f0766d;
+  color-scheme: dark;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--fond);color:var(--texte);font:16px/1.45 var(--sans)}
+main{max-width:520px;margin:0 auto;padding:16px 16px 40px;display:flex;flex-direction:column;gap:14px}
+h1{font-size:1.25rem;margin:0;letter-spacing:.01em}
+h2{font-size:.78rem;margin:0;text-transform:uppercase;letter-spacing:.09em;color:var(--doux);font-weight:600}
+p{margin:0}
+.entete{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.etat{display:inline-flex;align-items:center;gap:8px;font-size:.9rem;color:var(--doux)}
+.etat::before{content:"";width:10px;height:10px;border-radius:50%;background:var(--doux)}
+.etat[data-etat="ok"]{color:var(--bon)} .etat[data-etat="ok"]::before{background:var(--bon)}
+.etat[data-etat="demo"]{color:var(--alerte)} .etat[data-etat="demo"]::before{background:var(--alerte)}
+.etat[data-etat="attente"]::before{background:var(--accent)}
+section{background:var(--carte);border:1px solid var(--trait);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:12px}
+.rang{display:flex;gap:10px;flex-wrap:wrap}
+button{font:600 1rem var(--sans);min-height:46px;padding:0 16px;border-radius:8px;border:1px solid var(--trait);background:transparent;color:var(--texte);cursor:pointer;flex:1 1 auto}
+button.principal{background:var(--accent);border-color:var(--accent);color:var(--sur-accent)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.avis{border-left:4px solid var(--alerte);padding:8px 12px;font-size:.92rem;background:var(--fond);border-radius:4px}
+.avis.erreur{border-color:var(--critique)}
+[hidden]{display:none !important}
+
+/* Batterie */
+.tension{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.tension b{font:700 3.2rem/1 var(--mono);font-variant-numeric:tabular-nums}
+.tension span{font-size:1.2rem;color:var(--doux)}
+.pastille{margin-left:auto;font-size:.82rem;font-weight:700;padding:4px 10px;border-radius:999px;border:1.5px solid currentColor;color:var(--doux)}
+.pastille[data-niv="bon"]{color:var(--bon)} .pastille[data-niv="alerte"]{color:var(--alerte)} .pastille[data-niv="critique"]{color:var(--critique)}
+.jauge{position:relative;height:38px}
+.jauge .rail{position:absolute;left:0;right:0;top:4px;height:12px;border-radius:6px;background:var(--fond);border:1px solid var(--trait);overflow:hidden}
+.jauge .niveau{height:100%;width:0;background:var(--doux);transition:width .4s}
+.jauge .niveau[data-niv="bon"]{background:var(--bon)} .jauge .niveau[data-niv="alerte"]{background:var(--alerte)} .jauge .niveau[data-niv="critique"]{background:var(--critique)}
+.jauge .repere{position:absolute;top:0;width:2px;height:20px;background:var(--texte)}
+.jauge .repere i{position:absolute;top:22px;left:50%;transform:translateX(-50%);font:normal .68rem var(--mono);color:var(--doux);white-space:nowrap}
+.echelle{display:flex;justify-content:space-between;font:.68rem var(--mono);color:var(--doux)}
+@media (prefers-reduced-motion: reduce){.jauge .niveau{transition:none}}
+
+/* Mesures */
+dl{margin:0;display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--trait);border:1px solid var(--trait);border-radius:8px;overflow:hidden}
+dl div{background:var(--carte);padding:10px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+dt{font-size:.74rem;color:var(--doux)}
+dd{margin:0;font:600 1.15rem var(--mono);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+dd small{font:400 .8rem var(--sans);color:var(--doux)}
+
+/* Réglages */
+.champ{display:grid;grid-template-columns:1fr 104px;align-items:center;gap:4px 12px}
+.champ label{font-weight:600}
+.champ small{grid-column:1/-1;color:var(--doux);font-size:.82rem}
+.saisie{display:flex;align-items:center;gap:6px}
+input[type=number]{width:100%;min-height:44px;padding:0 8px;font:600 1.05rem var(--mono);text-align:right;border:1px solid var(--trait);border-radius:8px;background:var(--fond);color:var(--texte)}
+.saisie span{color:var(--doux);font-size:.9rem;min-width:2.2em}
+.note{font-size:.85rem;color:var(--doux);min-height:1.3em}
+.note[data-ton="ok"]{color:var(--bon)} .note[data-ton="err"]{color:var(--critique)}
+
+details{background:var(--carte);border:1px solid var(--trait);border-radius:10px;padding:10px 14px}
+summary{cursor:pointer;font-size:.78rem;text-transform:uppercase;letter-spacing:.09em;color:var(--doux);font-weight:600}
+pre{margin:10px 0 0;max-height:220px;overflow:auto;font:.74rem/1.5 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;color:var(--doux)}
+</style>
+</head>
+<body>
+<main>
+  <div class="entete">
+    <h1>Caravane</h1>
+    <span class="etat" id="etat" data-etat="off" role="status">Non connecté</span>
+  </div>
+
+  <div class="avis erreur" id="avisNav" hidden>
+    Ce navigateur ne gère pas le Bluetooth web. Ouvrez la page dans Chrome sur Android, à une adresse en https. Le mode démonstration reste disponible.
+  </div>
+  <div class="avis erreur" id="avisErr" hidden></div>
+
+  <div class="rang">
+    <button class="principal" id="btnConn" type="button">Connecter la carte</button>
+    <button id="btnDemo" type="button">Démonstration sans carte</button>
+  </div>
+
+  <section aria-labelledby="tBat">
+    <h2 id="tBat">Batterie</h2>
+    <div class="tension">
+      <b id="vbat">--,--</b><span>V</span>
+      <span class="pastille" id="niv">en attente</span>
+    </div>
+    <div>
+      <div class="jauge" aria-hidden="true">
+        <div class="rail"><div class="niveau" id="jNiveau"></div></div>
+        <div class="repere" id="jCoup" hidden><i>coupure</i></div>
+        <div class="repere" id="jRep" hidden><i>reprise</i></div>
+      </div>
+      <div class="echelle" aria-hidden="true"><span>10,5 V</span><span>14,5 V</span></div>
+    </div>
+    <dl>
+      <div><dt>Intensité</dt><dd id="ibat">--</dd></div>
+      <div><dt>Alimentation</dt><dd id="sect">--</dd></div>
+      <div><dt>Ventilation frigo (12 V)</dt><dd id="vent">--</dd></div>
+      <div><dt>Mesures à envoyer</dt><dd id="file">--</dd></div>
+      <div><dt>Température</dt><dd id="temp">--</dd></div>
+      <div><dt>Humidité</dt><dd id="hum">--</dd></div>
+    </dl>
+    <div class="rang">
+      <button id="btnMes" type="button" disabled>Mesurer maintenant</button>
+    </div>
+  </section>
+
+  <section aria-labelledby="tRegl">
+    <h2 id="tRegl">Réglages</h2>
+    <form id="formCfg" novalidate>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div class="champ">
+          <label for="vCoup">Seuil de coupure</label>
+          <div class="saisie"><input id="vCoup" type="number" inputmode="decimal" min="10.5" max="13" step="0.1"><span>V</span></div>
+          <small>Sous cette tension, la carte coupe le 12 V de la ventilation.</small>
+        </div>
+        <div class="champ">
+          <label for="vRep">Seuil de reprise</label>
+          <div class="saisie"><input id="vRep" type="number" inputmode="decimal" min="10.6" max="14" step="0.1"><span>V</span></div>
+          <small>Au-dessus, elle la rétablit. Doit dépasser le seuil de coupure.</small>
+        </div>
+        <div class="champ">
+          <label for="reveil">Réveil sur batterie</label>
+          <div class="saisie"><input id="reveil" type="number" inputmode="numeric" min="1" max="240" step="1"><span>min</span></div>
+          <small>Durée de veille profonde entre deux mesures.</small>
+        </div>
+        <div class="rang">
+          <button id="btnLire" type="button" disabled>Relire la carte</button>
+          <button class="principal" id="btnEcrire" type="submit" disabled>Enregistrer sur la carte</button>
+        </div>
+        <p class="note" id="noteCfg" role="status"></p>
+      </div>
+    </form>
+  </section>
+
+  <section aria-labelledby="tHeure">
+    <h2 id="tHeure">Horloge</h2>
+    <dl>
+      <div><dt>Heure de la carte</dt><dd id="hCarte">--</dd></div>
+      <div><dt>Écart avec le téléphone</dt><dd id="hEcart">--</dd></div>
+    </dl>
+    <div class="rang">
+      <button id="btnHeure" type="button" disabled>Mettre à l'heure du téléphone</button>
+    </div>
+    <p class="note" id="noteHeure" role="status"></p>
+  </section>
+
+  <div class="rang">
+    <button id="btnVeille" type="button" disabled>Remettre la carte en veille</button>
+  </div>
+
+  <details>
+    <summary>Journal des échanges</summary>
+    <pre id="journal">Aucun échange pour le moment.</pre>
+  </details>
+</main>
+
+<script>
+"use strict";
+const NUS = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+const NUS_RX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+const NUS_TX = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+const V_MIN = 10.5, V_MAX = 14.5;
+
+const $ = id => document.getElementById(id);
+const fr = (n, d) => Number(n).toLocaleString("fr-FR", {minimumFractionDigits: d, maximumFractionDigits: d});
+let cfg = null;          // derniers réglages reçus de la carte
+let lien = null;         // liaison active : {envoyer(obj), fermer()}
+let lignes = [];
+
+function journal(sens, texte){
+  const h = new Date().toLocaleTimeString("fr-FR");
+  lignes.push(h + " " + sens + " " + texte);
+  if (lignes.length > 200) lignes.shift();
+  const pre = $("journal");
+  pre.textContent = lignes.join("\n");
+  pre.scrollTop = pre.scrollHeight;
+}
+function erreur(msg){ const a = $("avisErr"); a.textContent = msg || ""; a.hidden = !msg; }
+function note(id, texte, ton){ const n = $(id); n.textContent = texte; n.dataset.ton = ton || ""; }
+
+function majEtat(etat, texte){
+  const e = $("etat"); e.dataset.etat = etat; e.textContent = texte;
+  const actif = etat === "ok" || etat === "demo";
+  for (const id of ["btnMes","btnLire","btnEcrire","btnHeure","btnVeille"]) $(id).disabled = !actif;
+  $("btnConn").textContent = etat === "ok" ? "Déconnecter" : "Connecter la carte";
+  $("btnConn").disabled = etat === "attente" || etat === "demo";
+  $("btnDemo").textContent = etat === "demo" ? "Quitter la démonstration" : "Démonstration sans carte";
+  $("btnDemo").disabled = etat === "ok" || etat === "attente";
+}
+
+/* ---------- Affichage ---------- */
+const pct = v => Math.min(100, Math.max(0, (v - V_MIN) / (V_MAX - V_MIN) * 100));
+
+function niveauBatterie(v, secteur){
+  if (secteur) return ["bon", "sur secteur"];
+  if (!cfg) return ["", "seuils inconnus"];
+  if (v < cfg.v_coup) return ["critique", "batterie basse"];
+  if (v < cfg.v_rep) return ["alerte", "entre les seuils"];
+  return ["bon", "batterie correcte"];
+}
+
+let derniereMesure = null;
+function afficherMesure(m){
+  derniereMesure = m;
+  $("vbat").textContent = fr(m.vbat, 2);
+  const [niv, lib] = niveauBatterie(m.vbat, m.sect);
+  $("niv").dataset.niv = niv; $("niv").textContent = lib;
+  $("jNiveau").style.width = pct(m.vbat) + "%"; $("jNiveau").dataset.niv = niv;
+  $("ibat").innerHTML = m.ibat == null ? "--" : fr(m.ibat, 2) + " <small>A</small>";
+  $("sect").textContent = m.sect ? "Secteur" : "Batterie";
+  $("vent").textContent = m.sect ? "Par le secteur" : (m.vent ? "Alimentée" : "Coupée");
+  $("file").textContent = m.file == null ? "--" : m.file;
+  $("temp").innerHTML = m.temp == null ? "--" : fr(m.temp, 1) + " <small>°C</small>";
+  $("hum").innerHTML = m.hum == null ? "--" : fr(m.hum, 0) + " <small>%</small>";
+  if (m.ts) afficherHeure(m.ts);
+}
+
+function afficherHeure(ts){
+  const d = new Date(ts * 1000);
+  $("hCarte").textContent = d.toLocaleString("fr-FR", {day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit", second:"2-digit"});
+  const ecart = Math.round(ts - Date.now() / 1000), abs = Math.abs(ecart);
+  let t;
+  if (abs < 3) t = "à l'heure";
+  else if (abs < 120) t = abs + " s";
+  else if (abs < 7200) t = Math.round(abs / 60) + " min";
+  else if (abs < 172800) t = Math.round(abs / 3600) + " h";
+  else t = Math.round(abs / 86400) + " j";
+  $("hEcart").textContent = abs < 3 ? t : t + (ecart < 0 ? " de retard" : " d'avance");
+}
+
+function afficherCfg(c){
+  cfg = c;
+  $("vCoup").value = c.v_coup; $("vRep").value = c.v_rep; $("reveil").value = c.reveil;
+  for (const [id, v] of [["jCoup", c.v_coup], ["jRep", c.v_rep]]) {
+    $(id).hidden = false; $(id).style.left = "calc(" + pct(v) + "% - 1px)";
+  }
+  if (derniereMesure) afficherMesure(derniereMesure);
+}
+
+function recevoir(ligne){
+  ligne = ligne.trim();
+  if (!ligne) return;
+  journal("<", ligne);
+  let m;
+  try { m = JSON.parse(ligne); } catch { return; }   // ligne non JSON : reste visible dans le journal
+  if (m.t === "mes") afficherMesure(m);
+  else if (m.t === "cfg") { afficherCfg(m); note("noteCfg", "Réglages lus sur la carte.", "ok"); }
+  else if (m.t === "ok") {
+    if (m.c === "set") note("noteCfg", "Réglages enregistrés sur la carte.", "ok");
+    if (m.c === "heure") note("noteHeure", "Horloge de la carte mise à l'heure.", "ok");
+  }
+  else if (m.t === "err") erreur("La carte a refusé la commande : " + (m.msg || "sans précision"));
+}
+
+async function envoyer(obj){
+  if (!lien) return;
+  const texte = JSON.stringify(obj);
+  journal(">", texte);
+  try { await lien.envoyer(texte + "\n"); }
+  catch (e) { erreur("Envoi impossible : " + e.message); }
+}
+
+/* ---------- Liaison Bluetooth ---------- */
+async function connecter(){
+  erreur("");
+  majEtat("attente", "Recherche…");
+  let appareil;
+  try {
+    appareil = await navigator.bluetooth.requestDevice({
+      filters: [{namePrefix: "Caravane"}, {services: [NUS]}],
+      optionalServices: [NUS]
+    });
+  } catch (e) {
+    majEtat("off", "Non connecté");
+    if (e.name !== "NotFoundError") erreur("Recherche impossible : " + e.message);
+    return;
+  }
+  try {
+    majEtat("attente", "Connexion…");
+    const serveur = await appareil.gatt.connect();
+    const service = await serveur.getPrimaryService(NUS);
+    const rx = await service.getCharacteristic(NUS_RX);
+    const tx = await service.getCharacteristic(NUS_TX);
+    const dec = new TextDecoder(), enc = new TextEncoder();
+    let tampon = "", file = Promise.resolve();
+    tx.addEventListener("characteristicvaluechanged", ev => {
+      tampon += dec.decode(ev.target.value, {stream: true});
+      let i;
+      while ((i = tampon.indexOf("\n")) >= 0) { recevoir(tampon.slice(0, i)); tampon = tampon.slice(i + 1); }
+    });
+    await tx.startNotifications();
+    appareil.addEventListener("gattserverdisconnected", () => {
+      if (lien && lien.appareil === appareil) { lien = null; majEtat("off", "Carte déconnectée"); }
+    });
+    lien = {
+      appareil,
+      // Paquets de 20 octets : passe quel que soit le MTU négocié.
+      envoyer(texte){
+        const octets = enc.encode(texte);
+        file = file.catch(() => {}).then(async () => {
+          for (let i = 0; i < octets.length; i += 20) await rx.writeValue(octets.slice(i, i + 20));
+        });
+        return file;
+      },
+      fermer(){ if (appareil.gatt.connected) appareil.gatt.disconnect(); }
+    };
+    majEtat("ok", appareil.name || "Carte connectée");
+    await envoyer({c: "cfg?"});
+    await envoyer({c: "mes"});
+  } catch (e) {
+    try { appareil.gatt.disconnect(); } catch {}
+    lien = null;
+    majEtat("off", "Non connecté");
+    erreur("Connexion échouée : " + e.message + ". Vérifiez que la carte est réveillée (bouton USER) et proche du téléphone.");
+  }
+}
+
+/* ---------- Carte simulée ---------- */
+function carteSimulee(){
+  const c = {v_coup: 11.8, v_rep: 12.3, reveil: 15};
+  let decalage = -47, v = 12.42, vent = 1, restant = 3;
+  const mesure = () => {
+    v = Math.max(11.5, Math.min(12.9, v + (Math.random() - 0.55) * 0.08));
+    if (v < c.v_coup) vent = 0; else if (v > c.v_rep) vent = 1;
+    restant += 1;
+    repondre({t: "mes", vbat: +v.toFixed(2), ibat: +(vent ? 0.62 + Math.random() * 0.1 : 0.04).toFixed(2), sect: 0, vent,
+      temp: +(17.5 + Math.random()).toFixed(1), hum: Math.round(60 + Math.random() * 4),
+      ts: Math.round(Date.now() / 1000) + decalage, file: restant});
+  };
+  const repondre = o => setTimeout(() => lien && recevoir(JSON.stringify(o)), 150);
+  const minuterie = setInterval(mesure, 5000);
+  return {
+    envoyer(texte){
+      const m = JSON.parse(texte);
+      if (m.c === "cfg?") repondre({t: "cfg", ...c});
+      else if (m.c === "set") { c.v_coup = m.v_coup; c.v_rep = m.v_rep; c.reveil = m.reveil; repondre({t: "ok", c: "set"}); repondre({t: "cfg", ...c}); }
+      else if (m.c === "heure") { decalage = 0; repondre({t: "ok", c: "heure"}); mesure(); }
+      else if (m.c === "mes") mesure();
+      else if (m.c === "veille") setTimeout(quitterDemo, 300);
+      return Promise.resolve();
+    },
+    fermer(){ clearInterval(minuterie); }
+  };
+}
+function quitterDemo(){ if (lien) lien.fermer(); lien = null; majEtat("off", "Non connecté"); }
+
+/* ---------- Commandes ---------- */
+$("btnConn").addEventListener("click", () => {
+  if (lien) { lien.fermer(); lien = null; majEtat("off", "Non connecté"); }
+  else connecter();
+});
+$("btnDemo").addEventListener("click", () => {
+  if (lien) return quitterDemo();
+  erreur("");
+  lien = carteSimulee();
+  majEtat("demo", "Démonstration (valeurs simulées)");
+  envoyer({c: "cfg?"}); envoyer({c: "mes"});
+});
+$("btnMes").addEventListener("click", () => envoyer({c: "mes"}));
+$("btnLire").addEventListener("click", () => { note("noteCfg", ""); envoyer({c: "cfg?"}); });
+$("formCfg").addEventListener("submit", ev => {
+  ev.preventDefault();
+  const lire = id => parseFloat($(id).value.replace(",", "."));
+  const v_coup = lire("vCoup"), v_rep = lire("vRep"), reveil = Math.round(lire("reveil"));
+  if (!(v_coup >= 10.5 && v_coup <= 13)) return note("noteCfg", "Seuil de coupure : entre 10,5 et 13 V.", "err");
+  if (!(v_rep > v_coup && v_rep <= 14)) return note("noteCfg", "Seuil de reprise : au-dessus du seuil de coupure, 14 V au plus.", "err");
+  if (!(reveil >= 1 && reveil <= 240)) return note("noteCfg", "Réveil : entre 1 et 240 minutes.", "err");
+  note("noteCfg", "Envoi…");
+  envoyer({c: "set", v_coup, v_rep, reveil});
+});
+$("btnHeure").addEventListener("click", () => {
+  note("noteHeure", "Envoi…");
+  envoyer({c: "heure", ts: Math.round(Date.now() / 1000), tz: -new Date().getTimezoneOffset()});
+});
+$("btnVeille").addEventListener("click", () => envoyer({c: "veille"}));
+
+if (!navigator.bluetooth) { $("avisNav").hidden = false; $("btnConn").hidden = true; }
+</script>
+</body>
+</html>
