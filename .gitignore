@@ -1,0 +1,15 @@
+# Arduino / PlatformIO
+build/
+.pio/
+*.bin
+*.elf
+*.map
+
+# Secrets (clés TTN, Supabase…)
+.env
+secrets.h
+
+# Systèmes
+.DS_Store
+Thumbs.db
+desktop.ini
