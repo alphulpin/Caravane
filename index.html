@@ -6,36 +6,15 @@
 <meta name="theme-color" content="#1d2a30">
 <title>Caravane – réglage Bluetooth</title>
 <!--
-  Client Web Bluetooth pour la carte Heltec WiFi LoRa 32 V3 de la caravane.
-  À ouvrir dans Chrome sur Android, depuis une adresse https:// (ou http://localhost).
+  Client Web Bluetooth pour le firmware CaravaneDemo (Heltec WiFi LoRa 32 V3).
+  À ouvrir dans Chrome sur Android, depuis une adresse https://.
+  Protocole : voir le document « Protocole Bluetooth carte ↔ téléphone (démo CaravaneDemo) »
+  du projet, et Config.h côté firmware. Toute modification se fait des deux côtés.
 
-  PROTOCOLE (à respecter côté firmware)
-  Service BLE : Nordic UART Service (NUS)
-    service 6E400001-B5A3-F393-E0A9-E50E24DCCA9E
-    RX      6E400002-…  (écriture : téléphone -> carte)
-    TX      6E400003-…  (notification : carte -> téléphone)
-  Nom annoncé par la carte : commence par "Caravane".
-  Messages : une ligne JSON terminée par "\n". Une ligne peut arriver en plusieurs
-  paquets ; chaque côté accumule jusqu'au "\n".
-
-  Téléphone -> carte
-    {"c":"cfg?"}                                         demande les réglages
-    {"c":"set","v_coup":11.8,"v_rep":12.3,"reveil":15}   écrit les réglages
-    {"c":"heure","ts":1794812640,"tz":60}                heure UTC (s) + décalage local (min)
-    {"c":"mes"}                                          lance une mesure tout de suite
-    {"c":"veille"}                                       coupe le Bluetooth, retour en veille
-
-  Carte -> téléphone
-    {"t":"mes","vbat":12.62,"ibat":0.85,"sect":0,"vent":1,
-     "temp":18.4,"hum":61,"ts":1794812640,"file":3}      à chaque cycle de mesure
-        vbat V, ibat A, sect 1 = secteur présent, vent 1 = 12 V ventilation alimenté,
-        temp °C, hum %, ts heure carte UTC (s), file = mesures en mémoire non envoyées
-    {"t":"cfg","v_coup":11.8,"v_rep":12.3,"reveil":15}   réglages en vigueur
-        v_coup : coupe la ventilation sous cette tension (V)
-        v_rep  : la rétablit au-dessus de cette tension (V)
-        reveil : période de réveil sur batterie (min)
-    {"t":"ok","c":"set"}                                 commande acceptée
-    {"t":"err","msg":"texte"}                            commande refusée
+  Service Nordic UART, nom annoncé « Caravane », une ligne JSON terminée par "\n".
+  Téléphone -> carte : {"msg":"…","heure":<epoch s>,"tz_min":60,"inactivite_s":300,"veille_s":900,"defaut":true}
+                       champ absent, vide ou nul = inchangé ; {} = simple lecture.
+  Carte -> téléphone : état complet avec les mêmes clés + "vbat_mv" ; {"erreur":"json"} si illisible.
 -->
 <style>
 /* Tableau de bord d'instrument : une colonne, tension batterie en tête, réglages dessous. */
@@ -111,7 +90,7 @@ dd small{font:400 .8rem var(--sans);color:var(--doux)}
 .champ label{font-weight:600}
 .champ small{grid-column:1/-1;color:var(--doux);font-size:.82rem}
 .saisie{display:flex;align-items:center;gap:6px}
-input[type=number]{width:100%;min-height:44px;padding:0 8px;font:600 1.05rem var(--mono);text-align:right;border:1px solid var(--trait);border-radius:8px;background:var(--fond);color:var(--texte)}
+input[type=number],input[type=text]{width:100%;min-height:44px;padding:0 8px;font:600 1.05rem var(--mono);border:1px solid var(--trait);border-radius:8px;background:var(--fond);color:var(--texte)}
 .saisie span{color:var(--doux);font-size:.9rem;min-width:2.2em}
 .note{font-size:.85rem;color:var(--doux);min-height:1.3em}
 .note[data-ton="ok"]{color:var(--bon)} .note[data-ton="err"]{color:var(--critique)}
@@ -119,6 +98,8 @@ input[type=number]{width:100%;min-height:44px;padding:0 8px;font:600 1.05rem var
 details{background:var(--carte);border:1px solid var(--trait);border-radius:10px;padding:10px 14px}
 summary{cursor:pointer;font-size:.78rem;text-transform:uppercase;letter-spacing:.09em;color:var(--doux);font-weight:600}
 pre{margin:10px 0 0;max-height:220px;overflow:auto;font:.74rem/1.5 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;color:var(--doux)}
+input[type=number]{text-align:right}
+input[type=text]{font-family:var(--sans);font-weight:400}
 </style>
 </head>
 <body>
@@ -138,76 +119,48 @@ pre{margin:10px 0 0;max-height:220px;overflow:auto;font:.74rem/1.5 var(--mono);w
     <button id="btnDemo" type="button">Démonstration sans carte</button>
   </div>
 
-  <section aria-labelledby="tBat">
-    <h2 id="tBat">Batterie</h2>
-    <div class="tension">
-      <b id="vbat">--,--</b><span>V</span>
-      <span class="pastille" id="niv">en attente</span>
-    </div>
-    <div>
-      <div class="jauge" aria-hidden="true">
-        <div class="rail"><div class="niveau" id="jNiveau"></div></div>
-        <div class="repere" id="jCoup" hidden><i>coupure</i></div>
-        <div class="repere" id="jRep" hidden><i>reprise</i></div>
-      </div>
-      <div class="echelle" aria-hidden="true"><span>10,5 V</span><span>14,5 V</span></div>
-    </div>
+  <section aria-labelledby="tEtat">
+    <h2 id="tEtat">État de la carte</h2>
     <dl>
-      <div><dt>Intensité</dt><dd id="ibat">--</dd></div>
-      <div><dt>Alimentation</dt><dd id="sect">--</dd></div>
-      <div><dt>Ventilation frigo (12 V)</dt><dd id="vent">--</dd></div>
-      <div><dt>Mesures à envoyer</dt><dd id="file">--</dd></div>
-      <div><dt>Température</dt><dd id="temp">--</dd></div>
-      <div><dt>Humidité</dt><dd id="hum">--</dd></div>
+      <div><dt>Heure de la carte</dt><dd id="hCarte">--</dd></div>
+      <div><dt>Écart avec le téléphone</dt><dd id="hEcart">--</dd></div>
+      <div><dt>Batterie LiPo de la carte</dt><dd id="vbat">--</dd></div>
+      <div><dt>Dernière lecture</dt><dd id="lu">--</dd></div>
     </dl>
     <div class="rang">
-      <button id="btnMes" type="button" disabled>Mesurer maintenant</button>
+      <button id="btnLire" type="button" disabled>Relire la carte</button>
+      <button id="btnHeure" type="button" disabled>Mettre à l'heure du téléphone</button>
     </div>
+    <p class="note" id="noteHeure" role="status"></p>
   </section>
 
   <section aria-labelledby="tRegl">
     <h2 id="tRegl">Réglages</h2>
     <form id="formCfg" novalidate>
       <div style="display:flex;flex-direction:column;gap:14px">
-        <div class="champ">
-          <label for="vCoup">Seuil de coupure</label>
-          <div class="saisie"><input id="vCoup" type="number" inputmode="decimal" min="10.5" max="13" step="0.1"><span>V</span></div>
-          <small>Sous cette tension, la carte coupe le 12 V de la ventilation.</small>
+        <div class="champ" style="grid-template-columns:1fr">
+          <label for="msg">Message d'accueil</label>
+          <input id="msg" type="text" maxlength="42" autocomplete="off">
+          <small>Affiché sur l'écran de la carte. 42 caractères au plus ; un message vide laisse l'ancien.</small>
         </div>
         <div class="champ">
-          <label for="vRep">Seuil de reprise</label>
-          <div class="saisie"><input id="vRep" type="number" inputmode="decimal" min="10.6" max="14" step="0.1"><span>V</span></div>
-          <small>Au-dessus, elle la rétablit. Doit dépasser le seuil de coupure.</small>
+          <label for="inact">Inactivité avant veille</label>
+          <div class="saisie"><input id="inact" type="number" inputmode="numeric" min="30" max="3600" step="1"><span>s</span></div>
+          <small>Entre 30 et 3600 secondes.</small>
         </div>
         <div class="champ">
-          <label for="reveil">Réveil sur batterie</label>
-          <div class="saisie"><input id="reveil" type="number" inputmode="numeric" min="1" max="240" step="1"><span>min</span></div>
-          <small>Durée de veille profonde entre deux mesures.</small>
+          <label for="veille">Durée de la veille profonde</label>
+          <div class="saisie"><input id="veille" type="number" inputmode="decimal" min="1" max="1440" step="1"><span>min</span></div>
+          <small>Entre 1 et 1440 minutes.</small>
         </div>
         <div class="rang">
-          <button id="btnLire" type="button" disabled>Relire la carte</button>
+          <button id="btnDefaut" type="button" disabled>Valeurs par défaut</button>
           <button class="principal" id="btnEcrire" type="submit" disabled>Enregistrer sur la carte</button>
         </div>
         <p class="note" id="noteCfg" role="status"></p>
       </div>
     </form>
   </section>
-
-  <section aria-labelledby="tHeure">
-    <h2 id="tHeure">Horloge</h2>
-    <dl>
-      <div><dt>Heure de la carte</dt><dd id="hCarte">--</dd></div>
-      <div><dt>Écart avec le téléphone</dt><dd id="hEcart">--</dd></div>
-    </dl>
-    <div class="rang">
-      <button id="btnHeure" type="button" disabled>Mettre à l'heure du téléphone</button>
-    </div>
-    <p class="note" id="noteHeure" role="status"></p>
-  </section>
-
-  <div class="rang">
-    <button id="btnVeille" type="button" disabled>Remettre la carte en veille</button>
-  </div>
 
   <details>
     <summary>Journal des échanges</summary>
@@ -220,17 +173,16 @@ pre{margin:10px 0 0;max-height:220px;overflow:auto;font:.74rem/1.5 var(--mono);w
 const NUS = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
 const NUS_RX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
 const NUS_TX = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
-const V_MIN = 10.5, V_MAX = 14.5;
 
 const $ = id => document.getElementById(id);
 const fr = (n, d) => Number(n).toLocaleString("fr-FR", {minimumFractionDigits: d, maximumFractionDigits: d});
-let cfg = null;          // derniers réglages reçus de la carte
-let lien = null;         // liaison active : {envoyer(obj), fermer()}
+let lien = null;         // liaison active : {envoyer(texte), fermer()}
+let attente = "";        // commande en cours : "cfg", "heure", "defaut" ou ""
+let horloge = null;      // {carte: epoch s reçu, tz: minutes, recu: Date.now() à la réception}
 let lignes = [];
 
 function journal(sens, texte){
-  const h = new Date().toLocaleTimeString("fr-FR");
-  lignes.push(h + " " + sens + " " + texte);
+  lignes.push(new Date().toLocaleTimeString("fr-FR") + " " + sens + " " + texte);
   if (lignes.length > 200) lignes.shift();
   const pre = $("journal");
   pre.textContent = lignes.join("\n");
@@ -242,7 +194,7 @@ function note(id, texte, ton){ const n = $(id); n.textContent = texte; n.dataset
 function majEtat(etat, texte){
   const e = $("etat"); e.dataset.etat = etat; e.textContent = texte;
   const actif = etat === "ok" || etat === "demo";
-  for (const id of ["btnMes","btnLire","btnEcrire","btnHeure","btnVeille"]) $(id).disabled = !actif;
+  for (const id of ["btnLire","btnEcrire","btnHeure","btnDefaut"]) $(id).disabled = !actif;
   $("btnConn").textContent = etat === "ok" ? "Déconnecter" : "Connecter la carte";
   $("btnConn").disabled = etat === "attente" || etat === "demo";
   $("btnDemo").textContent = etat === "demo" ? "Quitter la démonstration" : "Démonstration sans carte";
@@ -250,36 +202,14 @@ function majEtat(etat, texte){
 }
 
 /* ---------- Affichage ---------- */
-const pct = v => Math.min(100, Math.max(0, (v - V_MIN) / (V_MAX - V_MIN) * 100));
-
-function niveauBatterie(v, secteur){
-  if (secteur) return ["bon", "sur secteur"];
-  if (!cfg) return ["", "seuils inconnus"];
-  if (v < cfg.v_coup) return ["critique", "batterie basse"];
-  if (v < cfg.v_rep) return ["alerte", "entre les seuils"];
-  return ["bon", "batterie correcte"];
-}
-
-let derniereMesure = null;
-function afficherMesure(m){
-  derniereMesure = m;
-  $("vbat").textContent = fr(m.vbat, 2);
-  const [niv, lib] = niveauBatterie(m.vbat, m.sect);
-  $("niv").dataset.niv = niv; $("niv").textContent = lib;
-  $("jNiveau").style.width = pct(m.vbat) + "%"; $("jNiveau").dataset.niv = niv;
-  $("ibat").innerHTML = m.ibat == null ? "--" : fr(m.ibat, 2) + " <small>A</small>";
-  $("sect").textContent = m.sect ? "Secteur" : "Batterie";
-  $("vent").textContent = m.sect ? "Par le secteur" : (m.vent ? "Alimentée" : "Coupée");
-  $("file").textContent = m.file == null ? "--" : m.file;
-  $("temp").innerHTML = m.temp == null ? "--" : fr(m.temp, 1) + " <small>°C</small>";
-  $("hum").innerHTML = m.hum == null ? "--" : fr(m.hum, 0) + " <small>%</small>";
-  if (m.ts) afficherHeure(m.ts);
-}
-
-function afficherHeure(ts){
-  const d = new Date(ts * 1000);
-  $("hCarte").textContent = d.toLocaleString("fr-FR", {day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit", second:"2-digit"});
-  const ecart = Math.round(ts - Date.now() / 1000), abs = Math.abs(ecart);
+function afficherHorloge(){
+  if (!horloge) return;
+  if (!horloge.carte) { $("hCarte").textContent = "non réglée"; $("hEcart").textContent = "--"; return; }
+  const ecoule = (Date.now() - horloge.recu) / 1000;
+  // Heure locale de la carte : son heure UTC décalée de son propre tz_min.
+  const d = new Date((horloge.carte + ecoule + horloge.tz * 60) * 1000);
+  $("hCarte").textContent = d.toLocaleString("fr-FR", {timeZone: "UTC", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit"});
+  const ecart = Math.round(horloge.carte - horloge.recu / 1000), abs = Math.abs(ecart);
   let t;
   if (abs < 3) t = "à l'heure";
   else if (abs < 120) t = abs + " s";
@@ -288,14 +218,18 @@ function afficherHeure(ts){
   else t = Math.round(abs / 86400) + " j";
   $("hEcart").textContent = abs < 3 ? t : t + (ecart < 0 ? " de retard" : " d'avance");
 }
+setInterval(afficherHorloge, 1000);
 
-function afficherCfg(c){
-  cfg = c;
-  $("vCoup").value = c.v_coup; $("vRep").value = c.v_rep; $("reveil").value = c.reveil;
-  for (const [id, v] of [["jCoup", c.v_coup], ["jRep", c.v_rep]]) {
-    $(id).hidden = false; $(id).style.left = "calc(" + pct(v) + "% - 1px)";
-  }
-  if (derniereMesure) afficherMesure(derniereMesure);
+function afficherEtatCarte(m){
+  let h = Number(m.heure) || 0;
+  if (h > 1e11) h = h / 1000;                       // la carte peut renvoyer des millisecondes
+  horloge = {carte: h, tz: Number(m.tz_min) || 0, recu: Date.now()};
+  afficherHorloge();
+  $("vbat").innerHTML = m.vbat_mv == null ? "--" : fr(m.vbat_mv / 1000, 2) + " <small>V</small>";
+  $("lu").textContent = new Date().toLocaleTimeString("fr-FR");
+  if (m.msg != null) $("msg").value = m.msg;
+  if (m.inactivite_s != null) $("inact").value = m.inactivite_s;
+  if (m.veille_s != null) $("veille").value = +(m.veille_s / 60).toFixed(2);
 }
 
 function recevoir(ligne){
@@ -304,21 +238,21 @@ function recevoir(ligne){
   journal("<", ligne);
   let m;
   try { m = JSON.parse(ligne); } catch { return; }   // ligne non JSON : reste visible dans le journal
-  if (m.t === "mes") afficherMesure(m);
-  else if (m.t === "cfg") { afficherCfg(m); note("noteCfg", "Réglages lus sur la carte.", "ok"); }
-  else if (m.t === "ok") {
-    if (m.c === "set") note("noteCfg", "Réglages enregistrés sur la carte.", "ok");
-    if (m.c === "heure") note("noteHeure", "Horloge de la carte mise à l'heure.", "ok");
-  }
-  else if (m.t === "err") erreur("La carte a refusé la commande : " + (m.msg || "sans précision"));
+  if (m.erreur) { attente = ""; return erreur("La carte n'a pas compris la commande (" + m.erreur + ")."); }
+  afficherEtatCarte(m);
+  if (attente === "cfg") note("noteCfg", "Réglages enregistrés. Vérifiez les valeurs relues ci-dessus.", "ok");
+  if (attente === "defaut") note("noteCfg", "Valeurs par défaut rétablies.", "ok");
+  if (attente === "heure") note("noteHeure", "Horloge de la carte mise à l'heure.", "ok");
+  attente = "";
 }
 
-async function envoyer(obj){
+async function envoyer(obj, quoi){
   if (!lien) return;
+  attente = quoi || "";
   const texte = JSON.stringify(obj);
   journal(">", texte);
   try { await lien.envoyer(texte + "\n"); }
-  catch (e) { erreur("Envoi impossible : " + e.message); }
+  catch (e) { attente = ""; erreur("Envoi impossible : " + e.message); }
 }
 
 /* ---------- Liaison Bluetooth ---------- */
@@ -351,7 +285,7 @@ async function connecter(){
     });
     await tx.startNotifications();
     appareil.addEventListener("gattserverdisconnected", () => {
-      if (lien && lien.appareil === appareil) { lien = null; majEtat("off", "Carte déconnectée"); }
+      if (lien && lien.appareil === appareil) { lien = null; majEtat("off", "Carte déconnectée (veille ?)"); }
     });
     lien = {
       appareil,
@@ -366,8 +300,7 @@ async function connecter(){
       fermer(){ if (appareil.gatt.connected) appareil.gatt.disconnect(); }
     };
     majEtat("ok", appareil.name || "Carte connectée");
-    await envoyer({c: "cfg?"});
-    await envoyer({c: "mes"});
+    await envoyer({});      // la carte envoie aussi son état d'elle-même à la connexion
   } catch (e) {
     try { appareil.gatt.disconnect(); } catch {}
     lien = null;
@@ -378,32 +311,30 @@ async function connecter(){
 
 /* ---------- Carte simulée ---------- */
 function carteSimulee(){
-  const c = {v_coup: 11.8, v_rep: 12.3, reveil: 15};
-  let decalage = -47, v = 12.42, vent = 1, restant = 3;
-  const mesure = () => {
-    v = Math.max(11.5, Math.min(12.9, v + (Math.random() - 0.55) * 0.08));
-    if (v < c.v_coup) vent = 0; else if (v > c.v_rep) vent = 1;
-    restant += 1;
-    repondre({t: "mes", vbat: +v.toFixed(2), ibat: +(vent ? 0.62 + Math.random() * 0.1 : 0.04).toFixed(2), sect: 0, vent,
-      temp: +(17.5 + Math.random()).toFixed(1), hum: Math.round(60 + Math.random() * 4),
-      ts: Math.round(Date.now() / 1000) + decalage, file: restant});
-  };
-  const repondre = o => setTimeout(() => lien && recevoir(JSON.stringify(o)), 150);
-  const minuterie = setInterval(mesure, 5000);
+  const defaut = {msg: "hello world", tz_min: 60, inactivite_s: 300, veille_s: 900};
+  let c = {...defaut}, decalage = null;             // decalage nul = heure non réglée
+  const etat = () => ({...c, heure: decalage == null ? 0 : Math.round(Date.now() / 1000) + decalage,
+                       vbat_mv: 3950 + Math.round(Math.random() * 40)});
   return {
     envoyer(texte){
-      const m = JSON.parse(texte);
-      if (m.c === "cfg?") repondre({t: "cfg", ...c});
-      else if (m.c === "set") { c.v_coup = m.v_coup; c.v_rep = m.v_rep; c.reveil = m.reveil; repondre({t: "ok", c: "set"}); repondre({t: "cfg", ...c}); }
-      else if (m.c === "heure") { decalage = 0; repondre({t: "ok", c: "heure"}); mesure(); }
-      else if (m.c === "mes") mesure();
-      else if (m.c === "veille") setTimeout(quitterDemo, 300);
+      let m;
+      try { m = JSON.parse(texte); } catch { m = null; }
+      setTimeout(() => {
+        if (!lien) return;
+        if (!m) return recevoir('{"erreur":"json"}');
+        if (m.defaut === true) c = {...defaut};
+        if (m.msg) c.msg = String(m.msg).slice(0, 42);
+        if (m.heure) decalage = 0;
+        if (m.tz_min) c.tz_min = m.tz_min;
+        if (m.inactivite_s) c.inactivite_s = Math.min(3600, Math.max(30, m.inactivite_s));
+        if (m.veille_s) c.veille_s = Math.min(86400, Math.max(60, m.veille_s));
+        recevoir(JSON.stringify(etat()));
+      }, 150);
       return Promise.resolve();
     },
-    fermer(){ clearInterval(minuterie); }
+    fermer(){}
   };
 }
-function quitterDemo(){ if (lien) lien.fermer(); lien = null; majEtat("off", "Non connecté"); }
 
 /* ---------- Commandes ---------- */
 $("btnConn").addEventListener("click", () => {
@@ -411,29 +342,30 @@ $("btnConn").addEventListener("click", () => {
   else connecter();
 });
 $("btnDemo").addEventListener("click", () => {
-  if (lien) return quitterDemo();
+  if (lien) { lien = null; return majEtat("off", "Non connecté"); }
   erreur("");
   lien = carteSimulee();
   majEtat("demo", "Démonstration (valeurs simulées)");
-  envoyer({c: "cfg?"}); envoyer({c: "mes"});
+  envoyer({});
 });
-$("btnMes").addEventListener("click", () => envoyer({c: "mes"}));
-$("btnLire").addEventListener("click", () => { note("noteCfg", ""); envoyer({c: "cfg?"}); });
-$("formCfg").addEventListener("submit", ev => {
-  ev.preventDefault();
-  const lire = id => parseFloat($(id).value.replace(",", "."));
-  const v_coup = lire("vCoup"), v_rep = lire("vRep"), reveil = Math.round(lire("reveil"));
-  if (!(v_coup >= 10.5 && v_coup <= 13)) return note("noteCfg", "Seuil de coupure : entre 10,5 et 13 V.", "err");
-  if (!(v_rep > v_coup && v_rep <= 14)) return note("noteCfg", "Seuil de reprise : au-dessus du seuil de coupure, 14 V au plus.", "err");
-  if (!(reveil >= 1 && reveil <= 240)) return note("noteCfg", "Réveil : entre 1 et 240 minutes.", "err");
-  note("noteCfg", "Envoi…");
-  envoyer({c: "set", v_coup, v_rep, reveil});
-});
+$("btnLire").addEventListener("click", () => { note("noteCfg", ""); note("noteHeure", ""); envoyer({}); });
 $("btnHeure").addEventListener("click", () => {
   note("noteHeure", "Envoi…");
-  envoyer({c: "heure", ts: Math.round(Date.now() / 1000), tz: -new Date().getTimezoneOffset()});
+  envoyer({heure: Math.round(Date.now() / 1000), tz_min: -new Date().getTimezoneOffset()}, "heure");
 });
-$("btnVeille").addEventListener("click", () => envoyer({c: "veille"}));
+$("btnDefaut").addEventListener("click", () => { note("noteCfg", "Envoi…"); envoyer({defaut: true}, "defaut"); });
+$("formCfg").addEventListener("submit", ev => {
+  ev.preventDefault();
+  const nombre = id => parseFloat($(id).value.replace(",", "."));
+  const inactivite_s = Math.round(nombre("inact")), veille_s = Math.round(nombre("veille") * 60);
+  if (!(inactivite_s >= 30 && inactivite_s <= 3600)) return note("noteCfg", "Inactivité : entre 30 et 3600 secondes.", "err");
+  if (!(veille_s >= 60 && veille_s <= 86400)) return note("noteCfg", "Veille : entre 1 et 1440 minutes.", "err");
+  const ordre = {inactivite_s, veille_s};
+  const msg = $("msg").value.trim();
+  if (msg) ordre.msg = msg;
+  note("noteCfg", "Envoi…");
+  envoyer(ordre, "cfg");
+});
 
 if (!navigator.bluetooth) { $("avisNav").hidden = false; $("btnConn").hidden = true; }
 </script>
