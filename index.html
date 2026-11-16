@@ -14,7 +14,10 @@
   Service Nordic UART, nom annoncé « Caravane », une ligne JSON terminée par "\n".
   Téléphone -> carte : {"msg":"…","heure":<epoch s>,"tz_min":60,"inactivite_s":300,"veille_s":900,"defaut":true}
                        champ absent, vide ou nul = inchangé ; {} = simple lecture.
-  Carte -> téléphone : état complet avec les mêmes clés + "vbat_mv" ; {"erreur":"json"} si illisible.
+  Carte -> téléphone : état complet avec les mêmes clés + "vbat_mv", "secteur", "temp_c", "hum_pct",
+                       "press_hpa" et, sur secteur seulement, "eco2_ppm" et "tvoc_ppb".
+                       Envoyé à la connexion, après chaque commande et toutes les 10 s.
+                       {"erreur":"json"} si illisible.
 -->
 <style>
 /* Tableau de bord d'instrument : une colonne, tension batterie en tête, réglages dessous. */
@@ -134,6 +137,19 @@ input[type=text]{font-family:var(--sans);font-weight:400}
     <p class="note" id="noteHeure" role="status"></p>
   </section>
 
+  <section aria-labelledby="tEnv">
+    <h2 id="tEnv">Environnement</h2>
+    <dl>
+      <div><dt>Température</dt><dd id="temp">--</dd></div>
+      <div><dt>Humidité</dt><dd id="hum">--</dd></div>
+      <div><dt>Pression</dt><dd id="press">--</dd></div>
+      <div><dt>Alimentation</dt><dd id="alim">--</dd></div>
+      <div><dt>CO₂ équivalent</dt><dd id="eco2">--</dd></div>
+      <div><dt>COV totaux</dt><dd id="tvoc">--</dd></div>
+    </dl>
+    <p class="note">La qualité d'air (CO₂, COV) n'est mesurée que sur secteur.</p>
+  </section>
+
   <section aria-labelledby="tRegl">
     <h2 id="tRegl">Réglages</h2>
     <form id="formCfg" novalidate>
@@ -227,9 +243,18 @@ function afficherEtatCarte(m){
   afficherHorloge();
   $("vbat").innerHTML = m.vbat_mv == null ? "--" : fr(m.vbat_mv / 1000, 2) + " <small>V</small>";
   $("lu").textContent = new Date().toLocaleTimeString("fr-FR");
-  if (m.msg != null) $("msg").value = m.msg;
-  if (m.inactivite_s != null) $("inact").value = m.inactivite_s;
-  if (m.veille_s != null) $("veille").value = +(m.veille_s / 60).toFixed(2);
+  // La carte renvoie son état toutes les 10 s : ne pas écraser un champ en cours de saisie.
+  const remplir = (id, v) => { const c = $(id); if (v != null && !c.dataset.modifie && document.activeElement !== c) c.value = v; };
+  remplir("msg", m.msg);
+  remplir("inact", m.inactivite_s);
+  remplir("veille", m.veille_s != null ? +(m.veille_s / 60).toFixed(2) : null);
+  const unite = (v, d, u) => v == null ? "--" : fr(v, d) + " <small>" + u + "</small>";
+  $("temp").innerHTML  = unite(m.temp_c, 1, "°C");
+  $("hum").innerHTML   = unite(m.hum_pct, 0, "%");
+  $("press").innerHTML = unite(m.press_hpa, 0, "hPa");
+  $("eco2").innerHTML  = unite(m.eco2_ppm, 0, "ppm");
+  $("tvoc").innerHTML  = unite(m.tvoc_ppb, 0, "ppb");
+  $("alim").textContent = m.secteur == null ? "--" : (m.secteur ? "Secteur 230 V" : "Batterie");
 }
 
 function recevoir(ligne){
@@ -240,6 +265,7 @@ function recevoir(ligne){
   try { m = JSON.parse(ligne); } catch { return; }   // ligne non JSON : reste visible dans le journal
   if (m.erreur) { attente = ""; return erreur("La carte n'a pas compris la commande (" + m.erreur + ")."); }
   afficherEtatCarte(m);
+  if (attente === "cfg" || attente === "defaut") for (const id of ["msg","inact","veille"]) delete $(id).dataset.modifie;
   if (attente === "cfg") note("noteCfg", "Réglages enregistrés. Vérifiez les valeurs relues ci-dessus.", "ok");
   if (attente === "defaut") note("noteCfg", "Valeurs par défaut rétablies.", "ok");
   if (attente === "heure") note("noteHeure", "Horloge de la carte mise à l'heure.", "ok");
@@ -314,7 +340,9 @@ function carteSimulee(){
   const defaut = {msg: "hello world", tz_min: 60, inactivite_s: 300, veille_s: 900};
   let c = {...defaut}, decalage = null;             // decalage nul = heure non réglée
   const etat = () => ({...c, heure: decalage == null ? 0 : Math.round(Date.now() / 1000) + decalage,
-                       vbat_mv: 3950 + Math.round(Math.random() * 40)});
+                       vbat_mv: 3950 + Math.round(Math.random() * 40), secteur: false,
+                       temp_c: +(19 + Math.random()).toFixed(1), hum_pct: +(55 + Math.random() * 3).toFixed(1),
+                       press_hpa: +(1013 + Math.random() * 2).toFixed(1)});
   return {
     envoyer(texte){
       let m;
@@ -367,6 +395,7 @@ $("formCfg").addEventListener("submit", ev => {
   envoyer(ordre, "cfg");
 });
 
+for (const id of ["msg","inact","veille"]) $(id).addEventListener("input", () => { $(id).dataset.modifie = "1"; });
 if (!navigator.bluetooth) { $("avisNav").hidden = false; $("btnConn").hidden = true; }
 </script>
 </body>
