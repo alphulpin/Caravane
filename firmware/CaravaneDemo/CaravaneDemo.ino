@@ -57,6 +57,13 @@ bool peutDormir()   { return !surSecteur && !reglages.wifiActif(); } // veille p
 
 static float arrondi1(float v) { return roundf(v * 10.0f) / 10.0f; }
 
+// Tension LiPo (V3), étalonnée ; 0 = pas de mesure
+uint16_t lireVbat() {
+  uint16_t brute = batterie.lireMv();
+  if (brute == 0) return 0;
+  return (uint16_t)constrain(lroundf(reglages.etalonnage().appliquer(G_VBAT, brute)), 1L, 65535L);
+}
+
 // ---------- Relevés ----------
 
 // Relevés de ce démarrage pris avant que l'horloge soit réglée (le temps est perdu à chaque
@@ -81,7 +88,7 @@ void daterRelevesSansHeure() {
 void enregistrerReleve() {
   env.lire();
   Serial.println(env.diagnostic());
-  vbatMv = batterie.lireMv();
+  vbatMv = lireVbat();
   const Mesures& m = env.mesures();
   Releve r = {};
   r.numero      = reglages.prochainNumero();
@@ -101,16 +108,14 @@ void enregistrerReleve() {
                 releves.aPublier());
 }
 
-// Un relevé sous forme de ligne de la table Supabase caravane_releves : l'en-tête en colonnes,
-// les mesures dans l'objet « valeurs » (seulement celles qui existent ; un nouveau capteur =
+// Un relevé sous forme de ligne de la table Supabase caravane_releves : seulement les mesures
+// et leur contexte (n°, heure, secteur) ; nom, carte, étalonnage… partent dans caravane_config.
+// Les mesures sont dans l'objet « valeurs » (seulement celles qui existent ; un nouveau capteur =
 // une clé de plus, sans toucher à la base).
 void ajouterLigne(JsonArray lignes, const Releve& r) {
   JsonObject o = lignes.add<JsonObject>();
   o["appareil"]  = idCarte;
   o["releve_id"] = r.numero;
-  if (reglages.nom().length()) o["nom"] = reglages.nom(); else o["nom"] = nullptr;
-  o["carte"]     = CARTE_NOM;
-  if (CARTE_LORA) o["dev_eui"] = devEui; else o["dev_eui"] = nullptr;
   o["source"]    = "wifi";
   if (r.horodatage) o["mesure_le"] = Horloge::iso8601(r.horodatage); else o["mesure_le"] = nullptr;
   o["secteur"]   = r.secteur();
@@ -170,6 +175,97 @@ void publierWifi() {
 // Il sera alors marqué publié ; les plus anciens restent à publier par le Wi-Fi.
 void publierLora() {}
 
+// ---------- Configuration publiée (jumeau numérique) ----------
+// Envoyée à part des mesures, dans la table caravane_config : au démarrage, à chaque changement
+// et une fois par jour (battement de cœur). Jamais de secret (mot de passe Wi-Fi, clé Supabase).
+// La marque « à publier » est gardée en flash : un changement fait hors connexion part plus tard.
+
+void ajouterEtalonnage(JsonObject e) {
+  for (uint8_t g = 0; g < G_NOMBRE; g++) {
+    JsonObject o = e[codeGrandeur(g)].to<JsonObject>();
+    o["pente"]    = reglages.etalonnage()[g].pente;
+    o["decalage"] = reglages.etalonnage()[g].decalage;
+  }
+}
+
+// Contenu de la configuration (sert aussi d'empreinte pour détecter un changement)
+void remplirConfig(JsonObject c) {
+  c["nom"]          = reglages.nom();
+  c["carte"]        = CARTE_NOM;
+  if (CARTE_LORA) c["dev_eui"] = devEui;
+  c["firmware"]     = FIRMWARE_VERSION;
+  c["comm"]         = Reglages::nomComm(reglages.comm());
+  c["releve_s"]     = reglages.releveS();
+  c["inactivite_s"] = reglages.inactiviteS();
+  c["veille_s"]     = reglages.veilleS();
+  c["tz_min"]       = reglages.fuseauMin();
+  ajouterEtalonnage(c["etalonnage"].to<JsonObject>());
+  JsonObject cap = c["capteurs"].to<JsonObject>();
+  cap["temp_hum"] = env.nomTH();
+  cap["bmp280"]   = env.mesures().bmpOk;
+  cap["ccs811"]   = env.mesures().ccsOk;
+  JsonObject b = c["broches"].to<JsonObject>();
+  b["sda"] = reglages.capteursSda();
+  b["scl"] = reglages.capteursScl();
+  b["secteur"] = reglages.secteur();
+}
+
+String empreinteConfig() {
+  JsonDocument doc;
+  remplirConfig(doc.to<JsonObject>());
+  String s;
+  serializeJson(doc, s);
+  return s;
+}
+
+Preferences nvsConfig;                  // marque « configuration à publier », gardée en flash
+String configEvenement;                 // "demarrage" | "changement" | "periodique" ; vide = rien à publier
+uint32_t derniereConfigMs = 0;          // dernière publication réussie
+uint32_t dernierEssaiConfigMs = 0;
+
+void configAPublier(const char* evenement) {
+  // Un démarrage pas encore publié reste un démarrage (il porte la cause du redémarrage)
+  if (configEvenement == "demarrage" && strcmp(evenement, "demarrage") != 0) return;
+  configEvenement = evenement;
+  nvsConfig.putString("evt", configEvenement);
+  Serial.printf("Configuration à publier (%s)\n", evenement);
+}
+
+const char* causeRedemarrage() {
+  switch (esp_reset_reason()) {
+    case ESP_RST_POWERON:   return "mise sous tension";
+    case ESP_RST_SW:        return "redémarrage demandé";
+    case ESP_RST_PANIC:     return "plantage";
+    case ESP_RST_INT_WDT:
+    case ESP_RST_TASK_WDT:
+    case ESP_RST_WDT:       return "chien de garde";
+    case ESP_RST_BROWNOUT:  return "baisse de tension";
+    case ESP_RST_DEEPSLEEP: return "réveil";
+    case ESP_RST_EXT:       return "bouton reset";
+    default:                return "autre";
+  }
+}
+
+void publierConfig() {
+  dernierEssaiConfigMs = millis();
+  JsonDocument doc;
+  JsonObject o = doc.to<JsonArray>().add<JsonObject>();
+  o["appareil"]  = idCarte;
+  o["source"]    = "wifi";
+  o["evenement"] = configEvenement;
+  JsonObject c = o["config"].to<JsonObject>();
+  remplirConfig(c);
+  if (configEvenement == "demarrage") c["cause"] = causeRedemarrage();
+  String corps;
+  serializeJson(doc, corps);
+  reseau.envoyerSupabase(reglages.sbUrl(), reglages.sbCle(), SB_TABLE_CONFIG, corps, 1);
+  if (!reseau.dernierEnvoi().ok()) return;
+  Serial.printf("Configuration publiée (%s)\n", configEvenement.c_str());
+  configEvenement = "";
+  nvsConfig.remove("evt");
+  derniereConfigMs = millis();
+}
+
 // ---------- État pour le téléphone ----------
 
 void ajouterMesures(JsonDocument& doc) {
@@ -192,7 +288,7 @@ String etatJson() {
   doc[CLE_INACTIVITE] = reglages.inactiviteS();
   doc[CLE_VEILLE]     = reglages.veilleS();
   doc[CLE_RELEVE]     = reglages.releveS();
-  doc[CLE_TEMP_CORR]  = reglages.tempCorrC();
+  ajouterEtalonnage(doc[CLE_ETALONNAGE].to<JsonObject>());
   ajouterMesures(doc);
   // Identification et administration
   doc[CLE_CARTE]      = CARTE_NOM;
@@ -255,15 +351,25 @@ void traiterCommande(const String& ligne) {
     ble.envoyerLigne("{\"erreur\":\"json\"}");
     return;
   }
+  const String avant = empreinteConfig();
   if (doc[CLE_DEFAUT] | false) reglages.reinitialiser();
   reglages.definirNom(doc[CLE_NOM] | "");
   reglages.definirInactivite(doc[CLE_INACTIVITE] | 0UL);
   reglages.definirVeille(doc[CLE_VEILLE] | 0UL);
   reglages.definirReleve(doc[CLE_RELEVE] | 0UL);
-  if (doc[CLE_TEMP_CORR].is<float>() && reglages.definirTempCorr(doc[CLE_TEMP_CORR].as<float>())) {
-    env.definirCorrection(reglages.tempCorrC());
-    env.lire();                                      // valeur corrigée tout de suite à l'écran et au téléphone
+  // Étalonnage : {"temp_c":{"pente":1.02,"decalage":-1.5}} ; un champ absent garde sa valeur
+  JsonObject etal = doc[CLE_ETALONNAGE];
+  bool etalChange = false;
+  for (JsonPair p : etal) {
+    int g = grandeurDepuisCode(p.key().c_str());
+    if (g < 0) continue;
+    JsonObject v = p.value();
+    const Etalon& e = reglages.etalonnage()[g];
+    float pente = v["pente"].is<float>() ? v["pente"].as<float>() : e.pente;
+    float decalage = v["decalage"].is<float>() ? v["decalage"].as<float>() : e.decalage;
+    etalChange |= reglages.definirEtalon(g, pente, decalage);
   }
+  if (etalChange) { env.lire(); vbatMv = lireVbat(); }   // valeurs corrigées tout de suite
   if (doc[CLE_FUSEAU].is<int>()) reglages.definirFuseau(doc[CLE_FUSEAU].as<int>());
   Horloge::regler(doc[CLE_HEURE] | (int64_t)0);
 
@@ -286,6 +392,7 @@ void traiterCommande(const String& ligne) {
   else if (cmd == "effacer_nom") reglages.effacerNom();
   else if (cmd == "effacer_releves") { releves.effacer(); nbSansHeure = 0; }
 
+  if (empreinteConfig() != avant) configAPublier("changement");
   ble.envoyerLigne(etatJson());
 
   if (cmd == "redemarrer") {
@@ -370,7 +477,7 @@ void cycleRapide(uint8_t sda, uint8_t scl, bool busPartage) {
   digitalWrite(BROCHE_VEXT, LOW);                    // alimente les capteurs (l'écran reste éteint)
   delay(50);
   env.demarrer(sda, scl, busPartage);
-  env.definirCorrection(reglages.tempCorrC());
+  env.definirEtalonnage(&reglages.etalonnage());
   batterie.demarrer();
   releves.demarrer();
   enregistrerReleve();
@@ -392,7 +499,7 @@ void reveillerEcran() {
   derniereActiviteMs = millis();
   if (!ble.actif()) ble.demarrer(BLE_NOM_APPAREIL);
   if (ecran.endormi()) {                             // mesure fraîche pour l'écran rallumé
-    vbatMv = batterie.lireMv();
+    vbatMv = lireVbat();
     env.lire();
     ecran.sommeil(false);
     rafraichirEcran();
@@ -425,7 +532,7 @@ void setup() {
 
   ecran.demarrer(busPartage);                        // allume Vext : écran et capteurs
   env.demarrer(sda, scl, busPartage);
-  env.definirCorrection(reglages.tempCorrC());
+  env.definirEtalonnage(&reglages.etalonnage());
   env.balayer();
   batterie.demarrer();
   releves.demarrer();
@@ -438,6 +545,9 @@ void setup() {
   Serial.printf("Mémoire libre après Bluetooth : %u o (bloc max %u o)\n",
                 (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
   appliquerComm();                                   // Wi-Fi et qualité d'air selon le mode
+  nvsConfig.begin("caravane_cfg", false);
+  configEvenement = nvsConfig.getString("evt", "");
+  configAPublier("demarrage");
   enregistrerReleve();                               // un relevé à chaque démarrage
   derniereActiviteMs = millis();
   rafraichirEcran();
@@ -466,7 +576,7 @@ void loop() {
     if (++compteur >= 10) {
       compteur = 0;
       if (ble.connecte()) {
-        vbatMv = batterie.lireMv();
+        vbatMv = lireVbat();
         env.lire();
         Serial.println(env.diagnostic());
         ble.envoyerLigne(etatJson());
@@ -484,9 +594,13 @@ void loop() {
   // Publication Wi-Fi des relevés en attente : lot suivant tout de suite si le précédent
   // est passé, sinon nouvel essai au bout d'une minute.
   daterRelevesSansHeure();
+  if (configEvenement.isEmpty() && derniereConfigMs && millis() - derniereConfigMs >= CONFIG_PERIODE_S * 1000UL)
+    configAPublier("periodique");
+  bool publicationPossible = reglages.wifiActif() && reseau.connecte() && reglages.supabasePret() && memoirePourHttps();
+  if (publicationPossible && configEvenement.length() &&
+      (dernierEssaiConfigMs == 0 || millis() - dernierEssaiConfigMs >= 60000)) publierConfig();
   bool attendreHeure = nbSansHeure && millis() < ATTENTE_HEURE_MS;
-  if (reglages.wifiActif() && reseau.connecte() && reglages.supabasePret() && releves.aPublier() &&
-      !attendreHeure && memoirePourHttps()) {
+  if (publicationPossible && releves.aPublier() && !attendreHeure) {
     uint32_t delai = reseau.dernierEnvoi().ok() ? 2000 : 60000;
     if (dernierEssaiPublicationMs == 0 || millis() - dernierEssaiPublicationMs >= delai) publierWifi();
   }

@@ -91,6 +91,12 @@ dd{margin:0;font:600 1.15rem var(--mono);font-variant-numeric:tabular-nums;overf
 dd small{font:400 .8rem var(--sans);color:var(--doux)}
 
 /* Réglages */
+.etal{width:100%;border-collapse:collapse;font-size:.92rem}
+.etal th{text-align:left;color:var(--doux);font-weight:600;font-size:.8rem;padding:4px 4px}
+.etal td{padding:4px 4px;border-top:1px solid var(--trait)}
+.etal td:first-child{font-weight:600}
+.etal td small{display:block;color:var(--doux);font-weight:400;font-size:.78rem}
+.etal input{width:100%;min-width:0;box-sizing:border-box}
 .champ{display:grid;grid-template-columns:1fr 104px;align-items:center;gap:4px 12px}
 .champ label{font-weight:600}
 .champ small{grid-column:1/-1;color:var(--doux);font-size:.82rem}
@@ -179,11 +185,6 @@ input[type=text]{font-family:var(--sans);font-weight:400}
           <div class="saisie"><input id="veille" type="number" inputmode="decimal" min="1" max="1440" step="1"><span>min</span></div>
           <small>Entre 1 et 1440 minutes.</small>
         </div>
-        <div class="champ">
-          <label for="tcorr">Correction de température</label>
-          <div class="saisie"><input id="tcorr" type="number" inputmode="decimal" min="-10" max="10" step="0.1"><span>°C</span></div>
-          <small>Ajoutée à la mesure (étalonnage), entre −10 et +10 °C. Ex. : −1,5 si la carte affiche 1,5 °C de trop.</small>
-        </div>
         <div class="rang">
           <button id="btnDefaut" type="button" disabled>Valeurs par défaut</button>
           <button class="principal" id="btnEcrire" type="submit" disabled>Enregistrer sur la carte</button>
@@ -191,6 +192,21 @@ input[type=text]{font-family:var(--sans);font-weight:400}
         <p class="note" id="noteCfg" role="status"></p>
       </div>
     </form>
+  </section>
+
+  <section aria-labelledby="tEtal">
+    <h2 id="tEtal">Étalonnage des capteurs</h2>
+    <p class="note" style="margin-top:0">Valeur enregistrée = pente × mesure brute + décalage. Par défaut : pente 1, décalage 0.
+      Ex. : la carte affiche 1,5 °C de trop → décalage −1,5 sur la température.</p>
+    <table class="etal">
+      <thead><tr><th>Grandeur</th><th>Pente</th><th>Décalage</th></tr></thead>
+      <tbody id="etalCorps"></tbody>
+    </table>
+    <div class="rang" style="margin-top:12px">
+      <button id="btnEtalDefaut" type="button" disabled>Tout remettre à 1 et 0</button>
+      <button class="principal" id="btnEtal" type="button" disabled>Enregistrer l'étalonnage</button>
+    </div>
+    <p class="note" id="noteEtal" role="status"></p>
   </section>
 
   <details class="admin" id="admin">
@@ -306,7 +322,7 @@ function note(id, texte, ton){ const n = $(id); n.textContent = texte; n.dataset
 function majEtat(etat, texte){
   const e = $("etat"); e.dataset.etat = etat; e.textContent = texte;
   const actif = etat === "ok" || etat === "demo";
-  for (const id of ["btnLire","btnEcrire","btnHeure","btnDefaut","btnScan","btnAdmin","btnEnvoiNow","btnBroches","btnBrochesDefaut","btnRedem","btnEffNom","btnEffRel"]) $(id).disabled = !actif;
+  for (const id of ["btnLire","btnEcrire","btnHeure","btnDefaut","btnScan","btnAdmin","btnEnvoiNow","btnBroches","btnBrochesDefaut","btnRedem","btnEffNom","btnEffRel","btnEtal","btnEtalDefaut"]) $(id).disabled = !actif;
   $("btnConn").textContent = etat === "ok" ? "Déconnecter" : "Connecter la carte";
   $("btnConn").disabled = etat === "attente" || etat === "demo";
   $("btnDemo").textContent = etat === "demo" ? "Quitter la démonstration" : "Démonstration sans carte";
@@ -344,7 +360,12 @@ function afficherEtatCarte(m){
   remplir("nom", m.nom);
   remplir("inact", m.inactivite_s);
   remplir("veille", m.veille_s != null ? +(m.veille_s / 60).toFixed(2) : null);
-  remplir("tcorr", m.temp_corr_c != null ? +m.temp_corr_c.toFixed(1) : null);
+  if (m.etalonnage) for (const g of GRANDEURS) {
+    const e = m.etalonnage[g.code];
+    if (!e) continue;
+    remplir("p_" + g.code, +(+e.pente).toFixed(4));
+    remplir("d_" + g.code, +(+e.decalage).toFixed(2));
+  }
   const unite = (v, d, u) => v == null ? "--" : fr(v, d) + " <small>" + u + "</small>";
   $("temp").innerHTML  = unite(m.temp_c, 1, "°C");
   $("hum").innerHTML   = unite(m.hum_pct, 0, "%");
@@ -411,7 +432,8 @@ function recevoir(ligne){
   if (m.wifi_reseaux) return afficherReseaux(m.wifi_reseaux);   // réponse à la recherche Wi-Fi
   afficherEtatCarte(m);
   if (attente === "admin") for (const id of CHAMPS_ADMIN) delete $(id).dataset.modifie;
-  if (attente === "cfg" || attente === "defaut") for (const id of ["nom","inact","veille","tcorr"]) delete $(id).dataset.modifie;
+  if (attente === "cfg" || attente === "defaut") for (const id of ["nom","inact","veille"]) delete $(id).dataset.modifie;
+  if (attente === "etal") { for (const id of CHAMPS_ETAL) delete $(id).dataset.modifie; note("noteEtal", "Étalonnage enregistré : les mesures affichées sont corrigées.", "ok"); }
   if (attente === "cfg") note("noteCfg", "Réglages enregistrés. Vérifiez les valeurs relues ci-dessus.", "ok");
   if (attente === "defaut") note("noteCfg", "Valeurs par défaut rétablies.", "ok");
   if (attente === "heure") note("noteHeure", "Horloge de la carte mise à l'heure.", "ok");
@@ -486,7 +508,10 @@ async function connecter(){
 
 /* ---------- Carte simulée ---------- */
 function carteSimulee(){
-  const defaut = {nom: "", tz_min: 60, inactivite_s: 300, veille_s: 900, releve_s: 900, temp_corr_c: 0};
+  const defaut = {nom: "", tz_min: 60, inactivite_s: 300, veille_s: 900, releve_s: 900};
+  const etal = {};
+  for (const k of ["temp_c","hum_pct","press_hpa","eco2_ppm","tvoc_ppb","vbat_mv"]) etal[k] = {pente: 1, decalage: 0};
+  const corr = (k, v) => +(etal[k].pente * v + etal[k].decalage).toFixed(1);
   let c = {...defaut}, decalage = null;             // decalage nul = heure non réglée
   const a = {carte: "V3", lora_dispo: true, id_carte: "34B7DA5C1E20", dev_eui: "34B7DAFFFE5C1E20", comm: "aucun", wifi_ssid: "",
              wifi_mdp_def: false, wifi_etat: "inactif", sb_url: "", sb_table: "caravane_releves",
@@ -494,7 +519,7 @@ function carteSimulee(){
              broches_defaut: {sda: 41, scl: 42, secteur: 7}};
   const etat = () => ({...c, heure: decalage == null ? 0 : Math.round(Date.now() / 1000) + decalage,
                        vbat_mv: 3950 + Math.round(Math.random() * 40), secteur: false,
-                       temp_c: +(19 + c.temp_corr_c + Math.random()).toFixed(1), hum_pct: +(55 + Math.random() * 3).toFixed(1),
+                       etalonnage: etal, temp_c: corr("temp_c", 19 + Math.random()), hum_pct: +(55 + Math.random() * 3).toFixed(1),
                        press_hpa: +(1013 + Math.random() * 2).toFixed(1), ...a});
   return {
     envoyer(texte){
@@ -503,8 +528,8 @@ function carteSimulee(){
       setTimeout(() => {
         if (!lien) return;
         if (!m) return recevoir('{"erreur":"json"}');
-        if (m.defaut === true) c = {...defaut, nom: c.nom, temp_corr_c: c.temp_corr_c};
-        if (typeof m.temp_corr_c === "number") c.temp_corr_c = Math.max(-10, Math.min(10, m.temp_corr_c));
+        if (m.defaut === true) c = {...defaut, nom: c.nom};
+        if (m.etalonnage) for (const k in m.etalonnage) if (etal[k]) Object.assign(etal[k], m.etalonnage[k]);
         if (m.nom) c.nom = String(m.nom).trim().slice(0, 21);
         if (m.cmd === "effacer_nom") c.nom = "";
         if (m.releve_s) c.releve_s = Math.min(86400, Math.max(60, m.releve_s));
@@ -562,15 +587,52 @@ $("formCfg").addEventListener("submit", ev => {
   if (!(inactivite_s >= 30 && inactivite_s <= 3600)) return note("noteCfg", "Inactivité : entre 30 et 3600 secondes.", "err");
   if (!(veille_s >= 60 && veille_s <= 86400)) return note("noteCfg", "Veille : entre 1 et 1440 minutes.", "err");
   const ordre = {inactivite_s, veille_s};
-  if ($("tcorr").value !== "") {
-    const corr = nombre("tcorr");
-    if (!(corr >= -10 && corr <= 10)) return note("noteCfg", "Correction de température : entre −10 et +10 °C.", "err");
-    ordre.temp_corr_c = Math.round(corr * 10) / 10;
-  }
   const nom = $("nom").value.trim();
   if (nom) ordre.nom = nom;
   note("noteCfg", "Envoi…");
   envoyer(ordre, "cfg");
+});
+
+/* ---------- Étalonnage ---------- */
+const GRANDEURS = [
+  {code: "temp_c",    nom: "Température",    unite: "°C",  dmax: 10},
+  {code: "hum_pct",   nom: "Humidité",       unite: "%",   dmax: 20},
+  {code: "press_hpa", nom: "Pression",       unite: "hPa", dmax: 50},
+  {code: "eco2_ppm",  nom: "CO₂ équivalent", unite: "ppm", dmax: 500},
+  {code: "tvoc_ppb",  nom: "COV",            unite: "ppb", dmax: 500},
+  {code: "vbat_mv",   nom: "LiPo de la carte", unite: "mV", dmax: 500},
+];
+const CHAMPS_ETAL = GRANDEURS.flatMap(g => ["p_" + g.code, "d_" + g.code]);
+$("etalCorps").innerHTML = GRANDEURS.map(g =>
+  `<tr><td>${g.nom}<small>décalage en ${g.unite}</small></td>` +
+  `<td><input id="p_${g.code}" type="number" inputmode="decimal" step="0.001" min="0.5" max="2" aria-label="Pente ${g.nom}"></td>` +
+  `<td><input id="d_${g.code}" type="number" inputmode="decimal" step="0.1" min="-${g.dmax}" max="${g.dmax}" aria-label="Décalage ${g.nom}"></td></tr>`).join("");
+$("btnEtal").addEventListener("click", () => {
+  const nombre = id => parseFloat($(id).value.replace(",", "."));
+  const etalonnage = {};
+  for (const g of GRANDEURS) {
+    const p = $("p_" + g.code), d = $("d_" + g.code);
+    if (!p.dataset.modifie && !d.dataset.modifie) continue;      // seulement ce qui a été touché
+    const e = {};
+    if (p.value !== "") {
+      e.pente = nombre(p.id);
+      if (!(e.pente >= 0.5 && e.pente <= 2)) return note("noteEtal", g.nom + " : pente entre 0,5 et 2.", "err");
+    }
+    if (d.value !== "") {
+      e.decalage = nombre(d.id);
+      if (!(Math.abs(e.decalage) <= g.dmax)) return note("noteEtal", g.nom + " : décalage entre −" + g.dmax + " et +" + g.dmax + " " + g.unite + ".", "err");
+    }
+    if (Object.keys(e).length) etalonnage[g.code] = e;
+  }
+  if (!Object.keys(etalonnage).length) return note("noteEtal", "Aucune valeur modifiée.", "err");
+  note("noteEtal", "Envoi…");
+  envoyer({etalonnage}, "etal");
+});
+$("btnEtalDefaut").addEventListener("click", () => {
+  const etalonnage = {};
+  for (const g of GRANDEURS) etalonnage[g.code] = {pente: 1, decalage: 0};
+  note("noteEtal", "Envoi…");
+  envoyer({etalonnage}, "etal");
 });
 
 const CHAMPS_ADMIN = ["comm","wifiSsid","sbUrl","sbTable","releve","bSda","bScl","bSect"];
@@ -615,7 +677,7 @@ $("btnBroches").addEventListener("click", () => {
 $("btnBrochesDefaut").addEventListener("click", () => envoyerBroches({sda: -1, scl: -1, secteur: -1}));
 $("btnRedem").addEventListener("click", () => { note("noteAdmin", "Redémarrage demandé."); envoyer({cmd: "redemarrer"}); });
 
-for (const id of ["nom","inact","veille","tcorr", ...CHAMPS_ADMIN]) $(id).addEventListener("input", () => { $(id).dataset.modifie = "1"; });
+for (const id of ["nom","inact","veille", ...CHAMPS_ADMIN, ...CHAMPS_ETAL]) $(id).addEventListener("input", () => { $(id).dataset.modifie = "1"; });
 if (!navigator.bluetooth) { $("avisNav").hidden = false; $("btnConn").hidden = true; }
 </script>
 </body>

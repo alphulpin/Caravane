@@ -7,6 +7,7 @@
 #pragma once
 #include <Arduino.h>
 #include <Wire.h>
+#include "Etalonnage.h"
 
 struct Mesures {
   bool  hdcOk = false, bmpOk = false, ccsOk = false;
@@ -24,7 +25,7 @@ public:
   void demarrer(uint8_t sda, uint8_t scl, bool partage);
   void balayer();                           // liste les adresses I2C sur le port série
   void lire();                              // HDC1080 + BMP280 (+ CCS811 s'il tourne)
-  void definirCorrection(float c) { _corrC = c; }   // ajoutée à la température lue (étalonnage)
+  void definirEtalonnage(const Etalonnage* e) { _etal = e; }   // appliqué à chaque lecture
 
   // Qualité d'air : démarrée quand le capteur peut rester chaud (secteur ou Wi-Fi).
   void activerQualiteAir(bool actif);
@@ -47,10 +48,11 @@ private:
   void lireCcs();
 
   TwoWire* _bus = &Wire1;
-  Mesures _m;
+  Mesures _m;      // valeurs étalonnées
+  Mesures _brut;   // valeurs brutes des capteurs
   uint8_t _adrCcs = 0;
   bool _ccsActif = false;
-  float _corrC = 0;
+  const Etalonnage* _etal = nullptr;
   // Température/humidité à 0x40 : HDC1080 (prévu sur la CJMCU-8128) ou Si7021/HTU21D (même adresse)
   enum class TypeTH : uint8_t { Aucun, Hdc1080, Si7021 } _typeTH = TypeTH::Aucun;
   uint8_t _idTH[4] = {};             // identifiants lus au démarrage (diagnostic)

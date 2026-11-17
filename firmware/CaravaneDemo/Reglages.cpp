@@ -18,7 +18,8 @@ void Reglages::charger() {
   _veilleS     = _nvs.getULong("veille", VEILLE_DEFAUT_S);
   _fuseauMin   = _nvs.getShort("tz", FUSEAU_DEFAUT_MIN);
   _releveS     = _nvs.getULong("releve", RELEVE_DEFAUT_S);
-  _tempCorr10  = _nvs.getShort("tcorr", 0);
+  if (_nvs.getBytesLength("etal") == Etalonnage::TAILLE) _nvs.getBytes("etal", _etal.donnees(), Etalonnage::TAILLE);
+  else if (_nvs.isKey("tcorr")) _etal.definir(G_TEMP, 1.0f, _nvs.getShort("tcorr", 0) / 10.0f);   // ancienne correction
   _numero      = _nvs.getULong("numero", 0);
   _comm        = (ModeComm)_nvs.getUChar("comm", (uint8_t)ModeComm::Aucun);
   _wifiSsid    = _nvs.getString("wssid", "");
@@ -94,14 +95,9 @@ bool Reglages::definirFuseau(int16_t minutes) {
   return true;
 }
 
-// Correction d'étalonnage : gardée par « valeurs par défaut » (comme les broches).
-bool Reglages::definirTempCorr(float c) {
-  if (isnan(c)) return false;
-  c = constrain(c, -TEMP_CORR_MAX_C, TEMP_CORR_MAX_C);
-  int16_t v = (int16_t)lroundf(c * 10.0f);
-  if (v == _tempCorr10) return false;
-  _tempCorr10 = v;
-  _nvs.putShort("tcorr", v);
+bool Reglages::definirEtalon(uint8_t g, float pente, float decalage) {
+  if (!_etal.definir(g, pente, decalage)) return false;
+  _nvs.putBytes("etal", _etal.donnees(), Etalonnage::TAILLE);
   return true;
 }
 

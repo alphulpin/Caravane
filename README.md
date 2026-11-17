@@ -9,7 +9,7 @@ Domotique de caravane sur carte Heltec (ESP32) : surveillance de l'alimentation 
 |---|---|
 | `index.html` | Client web du téléphone (Web Bluetooth, Chrome Android), avec page Administration. Publié par GitHub Pages. |
 | `firmware/CaravaneDemo/` | Croquis Arduino de la carte, commun aux Heltec V2 et V3 (ouvrir `CaravaneDemo.ino`). |
-| `supabase/caravane_releves.sql` | Base des relevés : table `caravane_releves` (en-tête + valeurs en JSON), catalogue `caravane_grandeurs`, vue `caravane_series` (carte / grandeur / date / valeur), droits (insertion seule avec la clé publique). |
+| `supabase/caravane_releves.sql` | Base des relevés : table `caravane_releves` (en-tête + valeurs en JSON), catalogue `caravane_grandeurs`, configuration publiée `caravane_config`, vues `caravane_series` (carte / grandeur / date / valeur) et `caravane_cartes`, droits (insertion seule avec la clé publique). |
 | `supabase/grafana_lecture.sql` | Compte en lecture seule pour Grafana. |
 | `grafana/caravane-releves.json` | Tableau de bord Grafana à importer (voir `docs/grafana.md`). |
 | `docs/protocole-ble.md` | Protocole Bluetooth carte ↔ téléphone (champs JSON). |
@@ -45,7 +45,7 @@ Le modèle est reconnu à la compilation (ESP32-S3 → V3, ESP32 → V2) ; un m�
 - **Wi-Fi** : pas de veille, capteur de qualité d'air maintenu chaud, heure réglée par Internet (NTP), publication dans Supabase de **tous les relevés non publiés**, y compris ceux accumulés hors connexion.
 - **LoRa** : à venir (V3) ; seul le dernier relevé sera envoyé.
 
-Tout se règle depuis le client web : nom de la carte (Réglages) ; mode de communication, réseau Wi-Fi (recherche depuis la carte), Supabase, période des relevés, broches (Administration).
+Tout se règle depuis le client web : nom de la carte (Réglages) ; étalonnage pente/décalage de chaque grandeur ; mode de communication, réseau Wi-Fi (recherche depuis la carte), Supabase, période des relevés, broches (Administration).
 
 ## Supabase
 

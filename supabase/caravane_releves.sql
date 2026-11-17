@@ -3,7 +3,9 @@
 --   caravane_releves   : une ligne par relevé (en-tête + valeurs mesurées en JSON)
 --   caravane_grandeurs : catalogue des grandeurs (libellé, unité), pour l'affichage
 --   caravane_series    : vue « appareil / grandeur / date / valeur » pour Grafana
---   caravane_cartes    : vue du dernier nom connu de chaque carte
+--   caravane_config    : configuration des cartes (nom, firmware, étalonnage…), publiée au
+--                        démarrage, à chaque changement et une fois par jour — pas dans les relevés
+--   caravane_cartes    : vue de la dernière configuration connue de chaque carte
 --
 -- Alimentée directement par les cartes en Wi-Fi (POST /rest/v1/caravane_releves, clé publique)
 -- et, plus tard, par le webhook TTN (LoRa), qui écrira exactement le même format.
@@ -20,9 +22,9 @@ create table if not exists public.caravane_releves (
   mesure_le   timestamptz,                          -- heure du relevé sur la carte (null si inconnue)
   appareil    text not null,                        -- n° de série de la carte (MAC, 12 hexa)
   releve_id   bigint not null,                      -- n° de relevé propre à la carte
-  nom         text,                                 -- nom donné à la carte
-  carte       text,                                 -- "V2" ou "V3"
-  dev_eui     text,                                 -- identifiant LoRaWAN (V3)
+  nom         text,                                 -- (anciennes lignes seulement : voir caravane_config)
+  carte       text,                                 -- (idem)
+  dev_eui     text,                                 -- (idem)
   source      text not null default 'wifi',         -- "wifi" ou "lora"
   secteur     boolean,                              -- caravane branchée sur le 230 V
   valeurs     jsonb not null default '{}'::jsonb    -- {"temp_c":21.4,"hum_pct":55,...}
@@ -53,13 +55,51 @@ insert into public.caravane_grandeurs (code, libelle, unite, ordre) values
   ('bat12_ma',  'Courant batterie',     'mA',  80)    -- à venir
 on conflict (code) do update set libelle = excluded.libelle, unite = excluded.unite, ordre = excluded.ordre;
 
+-- Configuration publiée par les cartes (jumeau numérique). Historique complet : on retrouve
+-- l'étalonnage en vigueur à toute date. evenement = demarrage | changement | periodique.
+create table if not exists public.caravane_config (
+  id          bigint generated always as identity primary key,
+  recu_le     timestamptz not null default now(),
+  appareil    text not null,
+  source      text not null default 'wifi',
+  evenement   text,
+  config      jsonb not null      -- {"nom":"Maison","carte":"V2","firmware":"…","etalonnage":{…},…}
+);
+create index if not exists caravane_config_appareil_date on public.caravane_config (appareil, recu_le desc);
+
+-- Vues recréées à chaque passage (leurs colonnes peuvent évoluer d'une version à l'autre)
+drop view if exists public.caravane_series;
+drop view if exists public.caravane_cartes;
+
+-- Dernière configuration connue de chaque carte (repli sur les colonnes des anciens relevés)
+create or replace view public.caravane_cartes
+  with (security_invoker = true) as
+  with appareils as (
+    select appareil from public.caravane_releves
+    union
+    select appareil from public.caravane_config
+  )
+  select a.appareil,
+         coalesce(nullif(c.config->>'nom', ''), r.nom)   as nom,
+         coalesce(c.config->>'carte', r.carte)           as carte,
+         coalesce(c.config->>'dev_eui', r.dev_eui)       as dev_eui,
+         c.config->>'firmware'                           as firmware,
+         c.config                                        as config,
+         c.recu_le                                       as config_le,
+         (select max(recu_le) from public.caravane_releves x where x.appareil = a.appareil) as dernier_releve
+    from appareils a
+    left join lateral (select config, recu_le from public.caravane_config k
+                        where k.appareil = a.appareil order by recu_le desc limit 1) c on true
+    left join lateral (select nom, carte, dev_eui from public.caravane_releves x
+                        where x.appareil = a.appareil and x.nom is not null order by recu_le desc limit 1) r on true;
+
 -- Format long pour Grafana : une ligne par valeur numérique. Une clé inconnue du catalogue
 -- apparaît quand même (libellé = code).
 create or replace view public.caravane_series
   with (security_invoker = true) as
   select coalesce(r.mesure_le, r.recu_le)          as mesure_le,
          r.appareil,
-         coalesce(r.nom, r.appareil)               as nom,
+         coalesce(k.nom, r.appareil)               as nom,
          v.key                                     as grandeur,
          coalesce(g.libelle, v.key)                as libelle,
          g.unite,
@@ -70,14 +110,9 @@ create or replace view public.caravane_series
     from public.caravane_releves r
    cross join lateral jsonb_each(r.valeurs) v
     left join public.caravane_grandeurs g on g.code = v.key
+    left join public.caravane_cartes k on k.appareil = r.appareil
    where jsonb_typeof(v.value) = 'number';
 
-create or replace view public.caravane_cartes
-  with (security_invoker = true) as
-  select distinct on (appareil)
-         appareil, nom, carte, dev_eui, recu_le as dernier_releve
-    from public.caravane_releves
-   order by appareil, recu_le desc;
 
 -- Reprise de l'ancienne table « une colonne par capteur » (si elle existe).
 do $$
@@ -98,6 +133,19 @@ end $$;
 -- Sécurité : la clé publique embarquée dans les cartes ne peut QU'insérer des relevés.
 alter table public.caravane_releves   enable row level security;
 alter table public.caravane_grandeurs enable row level security;
+alter table public.caravane_config    enable row level security;
+
+drop policy if exists "carte : insertion seule" on public.caravane_config;
+create policy "carte : insertion seule"
+  on public.caravane_config
+  for insert
+  to anon
+  with check (
+    appareil ~ '^[0-9A-F]{12}$'
+    and source in ('wifi', 'lora')
+    and jsonb_typeof(config) = 'object'
+    and octet_length(config::text) <= 4000
+  );
 
 drop policy if exists "carte : insertion seule" on public.caravane_releves;
 create policy "carte : insertion seule"
@@ -113,24 +161,29 @@ create policy "carte : insertion seule"
 
 revoke all on public.caravane_releves   from anon;
 revoke all on public.caravane_grandeurs from anon;
+revoke all on public.caravane_config    from anon;
 revoke all on public.caravane_series    from anon;
 revoke all on public.caravane_cartes    from anon;
-grant insert on public.caravane_releves to anon;
+grant insert on public.caravane_releves, public.caravane_config to anon;
 
 -- Lecture : tableau de bord Supabase (rôle service) ou utilisateur authentifié.
 drop policy if exists "lecture authentifiée" on public.caravane_releves;
 create policy "lecture authentifiée" on public.caravane_releves for select to authenticated using (true);
 drop policy if exists "lecture authentifiée" on public.caravane_grandeurs;
 create policy "lecture authentifiée" on public.caravane_grandeurs for select to authenticated using (true);
-grant select on public.caravane_releves, public.caravane_grandeurs,
+drop policy if exists "lecture authentifiée" on public.caravane_config;
+create policy "lecture authentifiée" on public.caravane_config for select to authenticated using (true);
+grant select on public.caravane_releves, public.caravane_grandeurs, public.caravane_config,
                 public.caravane_series, public.caravane_cartes to authenticated;
 
 -- Lecture pour Grafana (si le rôle a été créé avec grafana_lecture.sql)
 do $$
 begin
   if exists (select 1 from pg_roles where rolname = 'grafana_lecture') then
-    execute 'grant select on public.caravane_releves, public.caravane_grandeurs,
+    execute 'grant select on public.caravane_releves, public.caravane_grandeurs, public.caravane_config,
                              public.caravane_series, public.caravane_cartes to grafana_lecture';
+    execute 'drop policy if exists "grafana : lecture" on public.caravane_config';
+    execute 'create policy "grafana : lecture" on public.caravane_config for select to grafana_lecture using (true)';
     execute 'drop policy if exists "grafana : lecture" on public.caravane_releves';
     execute 'create policy "grafana : lecture" on public.caravane_releves for select to grafana_lecture using (true)';
     execute 'drop policy if exists "grafana : lecture" on public.caravane_grandeurs';

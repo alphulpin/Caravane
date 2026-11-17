@@ -51,6 +51,9 @@ constexpr uint8_t BROCHE_BOUTON = 0;     // bouton USER/PRG, actif à l'état ba
 // ---------- Valeurs par défaut (codées en dur) ----------
 #define NOM_DEFAUT "Hello world"          // affiché tant que la carte n'a pas de nom
 #define SB_TABLE_DEFAUT "caravane_releves"
+#define SB_TABLE_CONFIG "caravane_config"   // configuration publiée au démarrage, à chaque changement et chaque jour
+#define FIRMWARE_VERSION "2026.11.17"
+constexpr uint32_t CONFIG_PERIODE_S = 24UL * 3600;  // battement de cœur de la configuration
 constexpr uint32_t INACTIVITE_DEFAUT_S = 5 * 60;   // avant mise en veille profonde
 constexpr uint32_t VEILLE_DEFAUT_S     = 15 * 60;  // durée de la veille profonde
 constexpr uint32_t RELEVE_DEFAUT_S     = 15 * 60;  // période des relevés quand la carte reste éveillée
@@ -60,7 +63,6 @@ constexpr int16_t  FUSEAU_DEFAUT_MIN   = 60;       // décalage heure locale / U
 constexpr uint32_t INACTIVITE_MIN_S = 30,  INACTIVITE_MAX_S = 3600;
 constexpr uint32_t VEILLE_MIN_S     = 60,  VEILLE_MAX_S     = 86400;
 constexpr uint32_t RELEVE_MIN_S     = 60,  RELEVE_MAX_S     = 86400;
-constexpr float    TEMP_CORR_MAX_C  = 10.0f;
 constexpr size_t   NOM_LONGUEUR_MAX = 21;          // une ligne d'écran
 constexpr uint16_t RELEVES_CAPACITE = 1000;        // relevés gardés en flash (≈10 jours à 4 par heure)
 constexpr uint8_t  RELEVES_PAR_LOT  = 10;          // relevés par envoi Supabase
@@ -82,7 +84,7 @@ enum class ModeComm : uint8_t { Aucun = 0, Wifi = 1, Lora = 2, WifiLora = 3 };
 #define CLE_FUSEAU     "tz_min"        // décalage local en minutes (= -getTimezoneOffset() en JS)
 #define CLE_INACTIVITE "inactivite_s"  // délai d'inactivité avant veille, en secondes
 #define CLE_VEILLE     "veille_s"      // durée de veille profonde, en secondes
-#define CLE_TEMP_CORR  "temp_corr_c"   // correction ajoutée à la température mesurée, en °C (-10 à +10)
+#define CLE_ETALONNAGE "etalonnage"    // {"temp_c":{"pente":1,"decalage":-1.5},...} : valeur = pente × brute + décalage
 #define CLE_RELEVE     "releve_s"      // période des relevés quand la carte reste éveillée, en secondes
 #define CLE_DEFAUT     "defaut"        // true = temporisations d'origine (nom, Wi-Fi, Supabase, broches conservés)
 // Administration

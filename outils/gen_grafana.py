@@ -64,8 +64,20 @@ panels = [
                  "from caravane_releves\nwhere appareil in ($carte) and $__timeFilter(" + T + ")\n"
                  "order by 1 desc\nlimit 200", "table")],
           None, {"showHeader": True, "cellHeight": "sm", "footer": {"show": False}}),
+  panneau("table", "Configuration publiée (démarrages, changements, battement quotidien)", 0, 26, 24, 8,
+          [cible("select k.recu_le as \"reçu le\", coalesce(nullif(k.config->>'nom', ''), k.appareil) as \"carte\",\n"
+                 "  k.evenement as \"événement\", k.config->>'cause' as \"cause\", k.config->>'firmware' as \"firmware\",\n"
+                 "  k.config->>'comm' as \"comm.\", (k.config->>'releve_s')::int / 60 as \"relevé (min)\",\n"
+                 "  (select string_agg(e.key || ' ×' || (e.value->>'pente') || ' ' || (e.value->>'decalage'), ', ' order by e.key)\n"
+                 "     from jsonb_each(k.config->'etalonnage') e\n"
+                 "    where (e.value->>'pente')::float <> 1 or (e.value->>'decalage')::float <> 0) as \"étalonnage (≠ défaut)\"\n"
+                 "from caravane_config k\nwhere k.appareil in ($carte) and $__timeFilter(k.recu_le)\n"
+                 "order by k.recu_le desc\nlimit 100", "table")],
+          None, {"showHeader": True, "cellHeight": "sm", "footer": {"show": False}}),
 ]
 
+ANNOT = ("select recu_le as time, coalesce(nullif(config->>'nom', ''), appareil) || ' : ' || evenement as text\n"
+         "from caravane_config\nwhere appareil in ($carte) and evenement <> 'periodique' and $__timeFilter(recu_le)")
 var_carte = "select coalesce(nom, appareil) as __text, appareil as __value from caravane_cartes order by 1"
 var_grandeur = ("select libelle || coalesce(' (' || unite || ')', '') as __text, code as __value\n"
                 "from caravane_grandeurs g\n"
@@ -87,8 +99,12 @@ tableau = {
   "time": {"from": "now-2d", "to": "now"}, "schemaVersion": 39, "version": 2,
   "templating": {"list": [variable("carte", "Carte", var_carte), variable("grandeur", "Grandeur", var_grandeur)]},
   "panels": panels,
+  # Changements de configuration marqués sur les courbes
+  "annotations": {"list": [{
+    "name": "Configuration", "enable": True, "iconColor": "purple", "datasource": DS,
+    "target": {"refId": "Anno", "editorMode": "code", "format": "table", "rawQuery": True, "rawSql": ANNOT}}]},
 }
 json.dump(tableau, open(os.path.join(ICI, "..", "grafana", "caravane-releves.json"), "w"), ensure_ascii=False, indent=2)
-requetes = [t["rawSql"] for p in panels for t in p["targets"]] + [var_carte, var_grandeur]
+requetes = [t["rawSql"] for p in panels for t in p["targets"]] + [var_carte, var_grandeur, ANNOT]
 json.dump(requetes, open("/tmp/requetes.json", "w"))
 print(len(panels), "panneaux,", len(requetes), "requêtes")

@@ -345,6 +345,65 @@
           "show": false
         }
       }
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Configuration publiée (démarrages, changements, battement quotidien)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_SUPABASE}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_SUPABASE}"
+          },
+          "refId": "A",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "select k.recu_le as \"reçu le\", coalesce(nullif(k.config->>'nom', ''), k.appareil) as \"carte\",\n  k.evenement as \"événement\", k.config->>'cause' as \"cause\", k.config->>'firmware' as \"firmware\",\n  k.config->>'comm' as \"comm.\", (k.config->>'releve_s')::int / 60 as \"relevé (min)\",\n  (select string_agg(e.key || ' ×' || (e.value->>'pente') || ' ' || (e.value->>'decalage'), ', ' order by e.key)\n     from jsonb_each(k.config->'etalonnage') e\n    where (e.value->>'pente')::float <> 1 or (e.value->>'decalage')::float <> 0) as \"étalonnage (≠ défaut)\"\nfrom caravane_config k\nwhere k.appareil in ($carte) and $__timeFilter(k.recu_le)\norder by k.recu_le desc\nlimit 100"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      }
     }
-  ]
+  ],
+  "annotations": {
+    "list": [
+      {
+        "name": "Configuration",
+        "enable": true,
+        "iconColor": "purple",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "${DS_SUPABASE}"
+        },
+        "target": {
+          "refId": "Anno",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "select recu_le as time, coalesce(nullif(config->>'nom', ''), appareil) || ' : ' || evenement as text\nfrom caravane_config\nwhere appareil in ($carte) and evenement <> 'periodique' and $__timeFilter(recu_le)"
+        }
+      }
+    ]
+  }
 }

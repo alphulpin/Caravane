@@ -22,7 +22,7 @@ Un champ absent, vide (`""`) ou nul (`0`) ne modifie rien. Les durées et l'heur
 | `tz_min` | nombre | décalage local en minutes (`-new Date().getTimezoneOffset()`) | 60 | −720 à 840 |
 | `inactivite_s` | nombre | inactivité avant veille profonde (ou avant extinction de l'écran si la carte reste éveillée) | 300 | 30 à 3600 |
 | `veille_s` | nombre | durée de la veille profonde | 900 | 60 à 86400 |
-| `temp_corr_c` | nombre | correction ajoutée à la température mesurée (étalonnage, pas de 0,1 °C) ; conservée par `defaut` | 0 | −10 à +10 |
+| `etalonnage` | objet | par grandeur `{"pente":p,"decalage":d}` : valeur = p × brute + d ; seules les grandeurs et clés envoyées changent ; conservé par `defaut` | pente 1, décalage 0 | pente 0,5 à 2 ; décalage ±10 °C, ±20 %, ±50 hPa, ±500 ppm/ppb/mV |
 | `releve_s` | nombre | période des relevés quand la carte reste éveillée (secteur ou Wi-Fi) ; sur batterie, un relevé à chaque réveil | 900 | 60 à 86400 |
 | `defaut` | booléen | `true` = temporisations d'origine (nom, Wi-Fi, Supabase et broches conservés) | — | — |
 
@@ -80,3 +80,10 @@ Une mesure absente (capteur non détecté) n'apparaît pas. Envoyer `{}` renvoie
 
 ## Sécurité
 Le Bluetooth n'est pas appairé : toute personne à portée peut se connecter et modifier les réglages. Le mot de passe Wi-Fi et la clé Supabase transitent en clair sur le lien BLE (mais ne sont jamais relus). Utiliser une clé Supabase publique limitée à l'insertion (voir `supabase/caravane_releves.sql`).
+
+## Étalonnage
+
+Exemple : `{"etalonnage":{"temp_c":{"decalage":-1.5},"hum_pct":{"pente":1.03,"decalage":-2}}}`.
+Grandeurs : `temp_c`, `hum_pct`, `press_hpa`, `eco2_ppm`, `tvoc_ppb`, `vbat_mv`. L'état renvoyé
+contient toujours l'objet `etalonnage` complet. Les relevés sont enregistrés corrigés ; tout
+changement d'étalonnage est publié dans la table `caravane_config` (voir `donnees.md`).

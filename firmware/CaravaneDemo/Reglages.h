@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <Preferences.h>
 #include "Config.h"
+#include "Etalonnage.h"
 
 class Reglages {
 public:
@@ -31,8 +32,8 @@ public:
   uint32_t veilleS() const       { return _veilleS; }
   int16_t fuseauMin() const      { return _fuseauMin; }
   uint32_t releveS() const       { return _releveS; }
-  float tempCorrC() const        { return _tempCorr10 / 10.0f; }   // correction de température (étalonnage)
-  bool definirTempCorr(float c);
+  const Etalonnage& etalonnage() const { return _etal; }
+  bool definirEtalon(uint8_t g, float pente, float decalage);   // gardé par « valeurs par défaut »
   ModeComm comm() const          { return _comm; }
   bool wifiActif() const         { return _comm == ModeComm::Wifi || _comm == ModeComm::WifiLora; }
   bool loraActif() const         { return _comm == ModeComm::Lora || _comm == ModeComm::WifiLora; }
@@ -53,7 +54,8 @@ private:
   Preferences _nvs;
   String   _nom;
   uint32_t _inactiviteS = 0, _veilleS = 0, _releveS = 0, _numero = 0;
-  int16_t  _fuseauMin = 0, _tempCorr10 = 0;
+  int16_t  _fuseauMin = 0;
+  Etalonnage _etal;
   ModeComm _comm = ModeComm::Aucun;
   String   _wifiSsid, _wifiMdp, _sbUrl, _sbCle, _sbTable;
   int8_t   _sda = -1, _scl = -1, _secteur = -1;

@@ -83,6 +83,7 @@ void Environnement::demarrer(uint8_t sda, uint8_t scl, bool partage) {
   }
   _m.ccsOk = _adrCcs != 0;
   _ccsActif = false;
+  _brut = _m;
 
   Serial.printf("Capteurs : temp./hum. %s (id %02X%02X/%02X%02X), BMP280 %s, CCS811 %s\n",
                 nomTH(), _idTH[0], _idTH[1], _idTH[2], _idTH[3], _m.bmpOk ? "ok" : "absent",
@@ -211,6 +212,7 @@ void Environnement::activerQualiteAir(bool actif) {
     ecrire(_adrCcs, 0x01, &repos, 1);
     _ccsActif = false;
     _m.eco2Ppm = _m.tvocPpb = 0;
+    _brut.eco2Ppm = _brut.tvocPpb = 0;
     Serial.println("Qualité d'air : arrêtée");
   }
 }
@@ -233,8 +235,21 @@ void Environnement::lireCcs() {
 }
 
 void Environnement::lire() {
+  // Les pilotes gardent la valeur précédente quand rien de neuf n'arrive (CCS811) : ils
+  // travaillent donc sur les valeurs brutes, et l'étalonnage est appliqué à une copie.
+  _m = _brut;
   lireHdc();
-  if (!isnan(_m.temperatureC)) _m.temperatureC += _corrC;   // avant la compensation du CCS811
   lireBmp();
-  lireCcs();
+  lireCcs();                                         // compensée avec la température brute
+  _brut = _m;
+  if (!_etal) return;
+  _m.temperatureC = _etal->appliquer(G_TEMP, _m.temperatureC);
+  if (!isnan(_m.humiditePct)) _m.humiditePct = constrain(_etal->appliquer(G_HUM, _m.humiditePct), 0.0f, 100.0f);
+  _m.pressionHpa = _etal->appliquer(G_PRESS, _m.pressionHpa);
+  auto entier = [&](uint8_t g, uint16_t v) -> uint16_t {
+    if (v == 0) return 0;                            // 0 = pas de valeur
+    return (uint16_t)constrain(lroundf(_etal->appliquer(g, v)), 1L, 65535L);
+  };
+  _m.eco2Ppm = entier(G_ECO2, _m.eco2Ppm);
+  _m.tvocPpb = entier(G_TVOC, _m.tvocPpb);
 }
