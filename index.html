@@ -483,7 +483,7 @@ function carteSimulee(){
   const defaut = {nom: "", tz_min: 60, inactivite_s: 300, veille_s: 900, releve_s: 900};
   let c = {...defaut}, decalage = null;             // decalage nul = heure non réglée
   const a = {carte: "V3", lora_dispo: true, id_carte: "34B7DA5C1E20", dev_eui: "34B7DAFFFE5C1E20", comm: "aucun", wifi_ssid: "",
-             wifi_mdp_def: false, wifi_etat: "inactif", sb_url: "", sb_table: "caravane_mesures",
+             wifi_mdp_def: false, wifi_etat: "inactif", sb_url: "", sb_table: "caravane_releves",
              sb_cle_def: false, releves: {nombre: 37, a_publier: 37, capacite: 1000}, broches: {sda: 41, scl: 42, secteur: 7},
              broches_defaut: {sda: 41, scl: 42, secteur: 7}};
   const etat = () => ({...c, heure: decalage == null ? 0 : Math.round(Date.now() / 1000) + decalage,

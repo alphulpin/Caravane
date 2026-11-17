@@ -9,12 +9,14 @@ Domotique de caravane sur carte Heltec (ESP32) : surveillance de l'alimentation 
 |---|---|
 | `index.html` | Client web du téléphone (Web Bluetooth, Chrome Android), avec page Administration. Publié par GitHub Pages. |
 | `firmware/CaravaneDemo/` | Croquis Arduino de la carte, commun aux Heltec V2 et V3 (ouvrir `CaravaneDemo.ino`). |
-| `supabase/caravane_mesures.sql` | Création de la table des mesures et de ses droits (insertion seule avec la clé publique). |
+| `supabase/caravane_releves.sql` | Base des relevés : table `caravane_releves` (en-tête + valeurs en JSON), catalogue `caravane_grandeurs`, vue `caravane_series` (carte / grandeur / date / valeur), droits (insertion seule avec la clé publique). |
 | `supabase/grafana_lecture.sql` | Compte en lecture seule pour Grafana. |
 | `grafana/caravane-releves.json` | Tableau de bord Grafana à importer (voir `docs/grafana.md`). |
 | `docs/protocole-ble.md` | Protocole Bluetooth carte ↔ téléphone (champs JSON). |
 | `docs/cablage.md` | Brochage des capteurs et du contact secteur, pour V2 et V3. |
 | `docs/grafana.md` | Visualisation des relevés dans Grafana Cloud, pas à pas. |
+| `docs/donnees.md` | Modèle de données et trame LoRa prévue. |
+| `outils/gen_grafana.py` | Génère le tableau de bord Grafana. |
 
 À venir : décodeur de trames TTN et webhook vers Supabase (mode LoRa).
 
@@ -47,7 +49,7 @@ Tout se règle depuis le client web : nom de la carte (Réglages) ; mode de comm
 
 ## Supabase
 
-1. Dans le projet Supabase : SQL Editor > coller `supabase/caravane_mesures.sql` > Run. (Le script peut être relancé : il met à jour une table existante.)
+1. Dans le projet Supabase : SQL Editor > coller `supabase/caravane_releves.sql` > Run. (Relançable ; reprend les lignes de l'ancienne table `caravane_mesures` si elle existe.)
 2. Project Settings > API : copier l'URL du projet et la clé publique (`anon` ou `publishable`).
 3. Dans le client web, Administration > Supabase : coller l'URL et la clé, Enregistrer.
 4. Visualisation : voir `docs/grafana.md`.

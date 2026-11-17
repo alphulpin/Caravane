@@ -100,23 +100,25 @@ void enregistrerReleve() {
                 releves.aPublier());
 }
 
-// Un relevé sous forme de ligne de la table Supabase (toutes les clés, null si absent)
+// Un relevé sous forme de ligne de la table Supabase caravane_releves : l'en-tête en colonnes,
+// les mesures dans l'objet « valeurs » (seulement celles qui existent ; un nouveau capteur =
+// une clé de plus, sans toucher à la base).
 void ajouterLigne(JsonArray lignes, const Releve& r) {
   JsonObject o = lignes.add<JsonObject>();
   o["appareil"]  = idCarte;
+  o["releve_id"] = r.numero;
   if (reglages.nom().length()) o["nom"] = reglages.nom(); else o["nom"] = nullptr;
   o["carte"]     = CARTE_NOM;
   if (CARTE_LORA) o["dev_eui"] = devEui; else o["dev_eui"] = nullptr;
-  o["releve_id"] = r.numero;
   o["source"]    = "wifi";
   if (r.horodatage) o["mesure_le"] = Horloge::iso8601(r.horodatage); else o["mesure_le"] = nullptr;
   o["secteur"]   = r.secteur();
-  if (r.vbat_mv) o["vbat_mv"] = r.vbat_mv; else o["vbat_mv"] = nullptr;
-  if (r.temp_c10 != INT16_MIN) o["temp_c"] = r.temp_c10 / 10.0f; else o["temp_c"] = nullptr;
-  if (r.hum_c10 != 0xFFFF) o["hum_pct"] = r.hum_c10 / 10.0f; else o["hum_pct"] = nullptr;
-  if (r.press_hpa10 != 0xFFFF) o["press_hpa"] = r.press_hpa10 / 10.0f; else o["press_hpa"] = nullptr;
-  if (r.eco2_ppm) { o["eco2_ppm"] = r.eco2_ppm; o["tvoc_ppb"] = r.tvoc_ppb; }
-  else { o["eco2_ppm"] = nullptr; o["tvoc_ppb"] = nullptr; }
+  JsonObject v = o["valeurs"].to<JsonObject>();
+  if (r.temp_c10 != INT16_MIN) v["temp_c"]    = r.temp_c10 / 10.0;
+  if (r.hum_c10 != 0xFFFF)     v["hum_pct"]   = r.hum_c10 / 10.0;
+  if (r.press_hpa10 != 0xFFFF) v["press_hpa"] = r.press_hpa10 / 10.0;
+  if (r.eco2_ppm)            { v["eco2_ppm"]  = r.eco2_ppm; v["tvoc_ppb"] = r.tvoc_ppb; }
+  if (r.vbat_mv)               v["vbat_mv"]   = r.vbat_mv;
 }
 
 // Mémoire suffisante pour une connexion HTTPS ? Sur l'ESP32 (V2), Bluetooth + Wi-Fi + TLS ne

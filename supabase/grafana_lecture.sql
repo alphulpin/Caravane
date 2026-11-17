@@ -24,13 +24,12 @@ alter role grafana_lecture set default_transaction_read_only = on;
 alter role grafana_lecture set statement_timeout = '30s';
 
 grant usage on schema public to grafana_lecture;
-grant select on public.caravane_mesures to grafana_lecture;
-grant select on public.caravane_cartes  to grafana_lecture;
+grant select on public.caravane_releves, public.caravane_grandeurs,
+                public.caravane_series, public.caravane_cartes to grafana_lecture;
 
--- La table est protégée par RLS : il faut une politique de lecture pour ce compte.
-drop policy if exists "grafana : lecture" on public.caravane_mesures;
-create policy "grafana : lecture"
-  on public.caravane_mesures
-  for select
-  to grafana_lecture
-  using (true);
+-- Les tables sont protégées par RLS : il faut une politique de lecture pour ce compte.
+-- (À lancer après caravane_releves.sql, qui fait aussi ces réglages si le compte existe déjà.)
+drop policy if exists "grafana : lecture" on public.caravane_releves;
+create policy "grafana : lecture" on public.caravane_releves for select to grafana_lecture using (true);
+drop policy if exists "grafana : lecture" on public.caravane_grandeurs;
+create policy "grafana : lecture" on public.caravane_grandeurs for select to grafana_lecture using (true);

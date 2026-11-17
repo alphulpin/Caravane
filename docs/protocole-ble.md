@@ -34,7 +34,7 @@ Un champ absent, vide (`""`) ou nul (`0`) ne modifie rien. Les durées et l'heur
 | `wifi_mdp` | texte | mot de passe Wi-Fi (jamais renvoyé) | — |
 | `sb_url` | texte | `https://<projet>.supabase.co` | — |
 | `sb_cle` | texte | clé API publique Supabase (jamais renvoyée) | — |
-| `sb_table` | texte | table de destination | `caravane_mesures` |
+| `sb_table` | texte | table de destination | `caravane_releves` |
 | `broches` | objet | `{"sda":41,"scl":42,"secteur":7}` ; **une clé absente = inchangée, `-1` = défaut de la carte** (0 est une broche valide). Pris en compte au redémarrage. | selon la carte |
 | `cmd` | texte | `scan_wifi` (recherche des réseaux), `releve` (relevé immédiat, publié dans la foulée en Wi-Fi), `effacer_nom` (retour à « Hello world »), `effacer_releves` (vide le journal), `redemarrer` | — |
 
@@ -78,4 +78,4 @@ Une mesure absente (capteur non détecté) n'apparaît pas. Envoyer `{}` renvoie
 - Chaque relevé porte un numéro propre à la carte (`releve_id`, conservé en flash, jamais réutilisé) : Supabase refuse d'enregistrer deux fois le même couple (appareil, releve_id).
 
 ## Sécurité
-Le Bluetooth n'est pas appairé : toute personne à portée peut se connecter et modifier les réglages. Le mot de passe Wi-Fi et la clé Supabase transitent en clair sur le lien BLE (mais ne sont jamais relus). Utiliser une clé Supabase publique limitée à l'insertion (voir `supabase/caravane_mesures.sql`).
+Le Bluetooth n'est pas appairé : toute personne à portée peut se connecter et modifier les réglages. Le mot de passe Wi-Fi et la clé Supabase transitent en clair sur le lien BLE (mais ne sont jamais relus). Utiliser une clé Supabase publique limitée à l'insertion (voir `supabase/caravane_releves.sql`).

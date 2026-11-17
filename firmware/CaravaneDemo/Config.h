@@ -50,7 +50,7 @@ constexpr uint8_t BROCHE_BOUTON = 0;     // bouton USER/PRG, actif à l'état ba
 
 // ---------- Valeurs par défaut (codées en dur) ----------
 #define NOM_DEFAUT "Hello world"          // affiché tant que la carte n'a pas de nom
-#define SB_TABLE_DEFAUT "caravane_mesures"
+#define SB_TABLE_DEFAUT "caravane_releves"
 constexpr uint32_t INACTIVITE_DEFAUT_S = 5 * 60;   // avant mise en veille profonde
 constexpr uint32_t VEILLE_DEFAUT_S     = 15 * 60;  // durée de la veille profonde
 constexpr uint32_t RELEVE_DEFAUT_S     = 15 * 60;  // période des relevés quand la carte reste éveillée

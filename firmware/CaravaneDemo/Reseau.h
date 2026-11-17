@@ -2,7 +2,7 @@
 // directe dans Supabase par l'API REST (PostgREST).
 //
 // Supabase : POST https://<projet>.supabase.co/rest/v1/<table>, en-têtes apikey + Authorization.
-// La clé utilisée ne doit avoir que le droit d'insérer (voir supabase/caravane_mesures.sql).
+// La clé utilisée ne doit avoir que le droit d'insérer (voir supabase/caravane_releves.sql).
 // TLS sans vérification du certificat (setInsecure) : chiffré, mais sans contrôle du serveur.
 #pragma once
 #include <Arduino.h>

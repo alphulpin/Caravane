@@ -2,11 +2,13 @@
 
 Grafana lit directement la base Supabase avec un compte en lecture seule. Le tableau de bord prêt à importer est `grafana/caravane-releves.json`.
 
-Ce qu'il affiche, pour une ou plusieurs cartes (liste « Carte » en haut) :
-- dernières valeurs : température, humidité, pression, alimentation, heure du dernier relevé ;
-- courbes : température, humidité, pression, qualité d'air (CO₂ équivalent, COV), LiPo de la carte (V3) ;
+Ce qu'il affiche, pour les cartes et grandeurs choisies (listes « Carte » et « Grandeur » en haut) :
+- dernière valeur de chaque grandeur, heure du dernier relevé ;
+- une courbe par grandeur (une série par carte) : un nouveau capteur apparaît tout seul dans la liste ;
 - bandeau secteur / batterie dans le temps ;
 - tableau des 200 derniers relevés.
+
+Il lit la vue `caravane_series` (format « carte / grandeur / date / valeur », voir `docs/donnees.md`).
 
 Les relevés sont placés à leur heure de mesure sur la carte (`mesure_le`), ou à leur heure d'arrivée si la carte n'était pas à l'heure : les relevés publiés en retard après une coupure Wi-Fi se rangent donc au bon endroit.
 
@@ -14,9 +16,9 @@ Les relevés sont placés à leur heure de mesure sur la carte (`mesure_le`), ou
 
 1. Supabase > **SQL Editor** > New query.
 2. Coller `supabase/grafana_lecture.sql`.
-3. Remplacer `CHANGER-CE-MOT-DE-PASSE` par un mot de passe long (le noter), puis **Run**.
+3. (Après `caravane_releves.sql`.) Remplacer `CHANGER-CE-MOT-DE-PASSE` par un mot de passe long (le noter), puis **Run**.
 
-Ce compte (`grafana_lecture`) ne peut que lire la table des relevés : toute écriture est refusée, et une requête est coupée au bout de 30 s.
+Ce compte (`grafana_lecture`) ne peut que lire les relevés : toute écriture est refusée, et une requête est coupée au bout de 30 s.
 
 ## 2. Relever les paramètres de connexion
 
@@ -56,4 +58,4 @@ Le tableau se rafraîchit toutes les 5 minutes et montre les 2 derniers jours pa
 
 ## Sans Grafana
 
-Pour un coup d'œil rapide : Supabase > **Table Editor** > `caravane_mesures` (tri par `recu_le`), ou la vue `caravane_cartes` (dernier relevé et nom de chaque carte).
+Pour un coup d'œil rapide : Supabase > **Table Editor** > `caravane_releves` (tri par `recu_le`), ou la vue `caravane_cartes` (dernier relevé et nom de chaque carte).

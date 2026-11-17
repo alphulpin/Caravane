@@ -25,6 +25,10 @@ void Reglages::charger() {
   _sbUrl       = _nvs.getString("sburl", "");
   _sbCle       = _nvs.getString("sbcle", "");
   _sbTable     = _nvs.getString("sbtab", SB_TABLE_DEFAUT);
+  if (_sbTable == "caravane_mesures") {          // ancienne table « une colonne par capteur »
+    _sbTable = SB_TABLE_DEFAUT;
+    _nvs.putString("sbtab", _sbTable);
+  }
   _sda         = _nvs.getChar("bsda", -1);
   _scl         = _nvs.getChar("bscl", -1);
   _secteur     = _nvs.getChar("bsect", -1);
