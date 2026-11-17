@@ -42,6 +42,8 @@ public:
 private:
   bool _actif = false;
   bool _ntpLance = false;
+  bool _etaitConnecte = false;
+  uint32_t _depuisMs = 0;             // début de la tentative de connexion en cours
   String _ssid, _mdp;
   ResultatEnvoi _dernier;
 };

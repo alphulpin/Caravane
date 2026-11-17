@@ -15,6 +15,8 @@ void Reseau::demarrer(const String& ssid, const String& mdp) {
   WiFi.begin(_ssid.c_str(), _mdp.c_str());
   _actif = true;
   _ntpLance = false;
+  _etaitConnecte = false;
+  _depuisMs = millis();
   Serial.printf("Wi-Fi : connexion à « %s »\n", _ssid.c_str());
 }
 
@@ -33,7 +35,26 @@ const char* Reseau::etat() const {
 }
 
 void Reseau::entretenir() {
-  if (!connecte() || _ntpLance) return;
+  if (!_actif) return;
+  bool c = WiFi.status() == WL_CONNECTED;
+  if (!c) {
+    if (_etaitConnecte) {               // connexion perdue
+      Serial.println("Wi-Fi : connexion perdue");
+      _etaitConnecte = false;
+      _depuisMs = millis();
+    }
+    // Pas connecté au bout de 30 s : on relance la connexion (sans cela, elle peut rester bloquée)
+    if (millis() - _depuisMs > 30000) {
+      Serial.printf("Wi-Fi : pas de connexion après 30 s (statut %d), nouvel essai\n", (int)WiFi.status());
+      WiFi.disconnect();
+      delay(100);
+      WiFi.begin(_ssid.c_str(), _mdp.c_str());
+      _depuisMs = millis();
+    }
+    return;
+  }
+  _etaitConnecte = true;
+  if (_ntpLance) return;
   // Heure système en UTC ; l'affichage applique le fuseau des réglages.
   configTime(0, 0, "pool.ntp.org", "time.google.com");
   _ntpLance = true;
