@@ -62,7 +62,7 @@ bool Releves::demarrer() {
   return _pret = true;
 }
 
-bool Releves::ajouter(const Releve& r) {
+bool Releves::ajouter(const Releve& r, uint16_t* indexAjoute) {
   if (!_pret) return false;
   File f = LittleFS.open(CHEMIN, "r+");
   if (!f) return false;
@@ -82,6 +82,19 @@ bool Releves::ajouter(const Releve& r) {
   ok = ecrireEntete(f) && ok;
   f.close();
   if (ok && !r.publie()) _aPublier++;
+  if (ok && indexAjoute) *indexAjoute = index;
+  return ok;
+}
+
+bool Releves::dater(uint16_t index, uint32_t horodatage) {
+  if (!_pret || index >= RELEVES_CAPACITE) return false;
+  File f = LittleFS.open(CHEMIN, "r+");
+  if (!f) return false;
+  const size_t decalage = offsetof(Releve, horodatage);
+  uint32_t actuel = 1;
+  bool ok = f.seek(position(index) + decalage) && f.read((uint8_t*)&actuel, 4) == 4 && actuel == 0 &&
+            f.seek(position(index) + decalage) && f.write((const uint8_t*)&horodatage, 4) == 4;
+  f.close();
   return ok;
 }
 

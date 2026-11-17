@@ -59,6 +59,25 @@ static float arrondi1(float v) { return roundf(v * 10.0f) / 10.0f; }
 
 // ---------- Relevés ----------
 
+// Relevés de ce démarrage pris avant que l'horloge soit réglée (le temps est perdu à chaque
+// redémarrage) : on note l'instant millis() et on les date dès que l'heure arrive (Internet ou
+// téléphone). Leur publication attend l'heure, 10 minutes au plus.
+struct SansHeure { uint16_t index; uint32_t ms; };
+SansHeure sansHeure[16];
+uint8_t nbSansHeure = 0;
+const uint32_t ATTENTE_HEURE_MS = 10UL * 60 * 1000;
+
+void daterRelevesSansHeure() {
+  if (!nbSansHeure || !Horloge::valide()) return;
+  uint32_t maintenant = (uint32_t)Horloge::epoch();
+  for (uint8_t i = 0; i < nbSansHeure; i++) {
+    uint32_t h = maintenant - (millis() - sansHeure[i].ms) / 1000;
+    bool ok = releves.dater(sansHeure[i].index, h);
+    Serial.printf("Relevé (emplacement %u) daté après coup : %s\n", sansHeure[i].index, ok ? Horloge::iso8601(h).c_str() : "échec");
+  }
+  nbSansHeure = 0;
+}
+
 void enregistrerReleve() {
   env.lire();
   vbatMv = batterie.lireMv();
@@ -73,8 +92,10 @@ void enregistrerReleve() {
   r.tvoc_ppb    = m.tvocPpb;
   r.vbat_mv     = Batterie::disponible() ? vbatMv : 0;
   r.drapeaux    = surSecteur ? Releve::SECTEUR : 0;
-  bool ok = releves.ajouter(r);
+  uint16_t index = 0;
+  bool ok = releves.ajouter(r, &index);
   dernierReleveMs = millis();
+  if (ok && !r.horodatage && nbSansHeure < 16) sansHeure[nbSansHeure++] = { index, dernierReleveMs };
   Serial.printf("Relevé n°%lu %s (%u à publier)\n", (unsigned long)r.numero, ok ? "enregistré" : "NON enregistré",
                 releves.aPublier());
 }
@@ -255,7 +276,7 @@ void traiterCommande(const String& ligne) {
   if (cmd == "scan_wifi") ble.envoyerLigne(reseau.scanner());
   else if (cmd == "releve") { enregistrerReleve(); dernierEssaiPublicationMs = 0; }
   else if (cmd == "effacer_nom") reglages.effacerNom();
-  else if (cmd == "effacer_releves") releves.effacer();
+  else if (cmd == "effacer_releves") { releves.effacer(); nbSansHeure = 0; }
 
   ble.envoyerLigne(etatJson());
 
@@ -443,8 +464,10 @@ void loop() {
 
   // Publication Wi-Fi des relevés en attente : lot suivant tout de suite si le précédent
   // est passé, sinon nouvel essai au bout d'une minute.
+  daterRelevesSansHeure();
+  bool attendreHeure = nbSansHeure && millis() < ATTENTE_HEURE_MS;
   if (reglages.wifiActif() && reseau.connecte() && reglages.supabasePret() && releves.aPublier() &&
-      memoirePourHttps()) {
+      !attendreHeure && memoirePourHttps()) {
     uint32_t delai = reseau.dernierEnvoi().ok() ? 2000 : 60000;
     if (dernierEssaiPublicationMs == 0 || millis() - dernierEssaiPublicationMs >= delai) publierWifi();
   }

@@ -33,7 +33,9 @@ public:
   bool demarrer();                        // monte LittleFS, ouvre ou crée le journal
   bool pret() const { return _pret; }
 
-  bool ajouter(const Releve& r);
+  bool ajouter(const Releve& r, uint16_t* indexAjoute = nullptr);
+  // Donne une date à un relevé pris avant que l'horloge soit réglée (sans effet s'il en a déjà une).
+  bool dater(uint16_t index, uint32_t horodatage);
   // Les plus anciens relevés non publiés (max au plus) ; index[] sert à les marquer ensuite.
   size_t nonPublies(Releve* sortie, uint16_t* index, size_t max);
   bool dernier(Releve& r, uint16_t& index);
