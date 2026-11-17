@@ -5,7 +5,7 @@
 #include <BLE2902.h>
 #endif
 
-static const size_t TAMPON_MAX = 512;
+static const size_t TAMPON_MAX = 1024;   // une ligne de réglage Supabase peut dépasser 512 octets
 static const size_t TAILLE_NOTIFICATION = 20;   // sûr quel que soit le MTU négocié
 
 void LiaisonBLE::demarrer(const char* nom) {

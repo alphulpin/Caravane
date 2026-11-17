@@ -5,30 +5,35 @@ static const uint8_t ADR_BMP = 0x76;
 
 // ---------- Accès I2C ----------
 bool Environnement::present(uint8_t adr) {
-  _bus.beginTransmission(adr);
-  return _bus.endTransmission() == 0;
+  _bus->beginTransmission(adr);
+  return _bus->endTransmission() == 0;
 }
 
 bool Environnement::ecrire(uint8_t adr, uint8_t reg, const uint8_t* data, size_t n) {
-  _bus.beginTransmission(adr);
-  _bus.write(reg);
-  for (size_t i = 0; i < n; i++) _bus.write(data[i]);
-  return _bus.endTransmission() == 0;
+  _bus->beginTransmission(adr);
+  _bus->write(reg);
+  for (size_t i = 0; i < n; i++) _bus->write(data[i]);
+  return _bus->endTransmission() == 0;
 }
 
 bool Environnement::lireRegs(uint8_t adr, uint8_t reg, uint8_t* data, size_t n) {
-  _bus.beginTransmission(adr);
-  _bus.write(reg);
-  if (_bus.endTransmission(false) != 0) return false;
-  if (_bus.requestFrom(adr, (uint8_t)n) != n) return false;
-  for (size_t i = 0; i < n; i++) data[i] = _bus.read();
+  _bus->beginTransmission(adr);
+  _bus->write(reg);
+  if (_bus->endTransmission(false) != 0) return false;
+  if (_bus->requestFrom(adr, (uint8_t)n) != n) return false;
+  for (size_t i = 0; i < n; i++) data[i] = _bus->read();
   return true;
 }
 
 // ---------- Démarrage ----------
-void Environnement::demarrer(uint8_t sda, uint8_t scl) {
-  _bus.begin(sda, scl, 100000);      // 100 kHz : le CCS811 étire l'horloge
-  _bus.setTimeOut(100);
+void Environnement::demarrer(uint8_t sda, uint8_t scl, bool partage) {
+  if (partage) {
+    _bus = &Wire;                    // déjà démarré par l'écran, réglé à 100 kHz
+  } else {
+    _bus = &Wire1;
+    _bus->begin(sda, scl, 100000);   // 100 kHz : le CCS811 étire l'horloge
+  }
+  _bus->setTimeOut(100);
   delay(20);                         // laisse les capteurs s'éveiller après Ve
 
   // HDC1080 : identifiant fabricant 0x5449 ; mode température + humidité, 14 bits
@@ -53,7 +58,7 @@ void Environnement::demarrer(uint8_t sda, uint8_t scl) {
 }
 
 void Environnement::balayer() {
-  Serial.print("Balayage I2C (Wire1) :");
+  Serial.printf("Balayage I2C (%s) :", _bus == &Wire ? "Wire, partagé avec l'écran" : "Wire1");
   uint8_t n = 0;
   for (uint8_t adr = 1; adr < 127; adr++) {
     if (present(adr)) { Serial.printf(" 0x%02X", adr); n++; }
@@ -64,13 +69,13 @@ void Environnement::balayer() {
 // ---------- HDC1080 ----------
 void Environnement::lireHdc() {
   if (!_m.hdcOk) return;
-  _bus.beginTransmission(ADR_HDC);
-  _bus.write(0x00);                  // déclenche température puis humidité
-  if (_bus.endTransmission() != 0) return;
+  _bus->beginTransmission(ADR_HDC);
+  _bus->write(0x00);                  // déclenche température puis humidité
+  if (_bus->endTransmission() != 0) return;
   delay(20);
   uint8_t b[4];
-  if (_bus.requestFrom(ADR_HDC, (uint8_t)4) != 4) return;
-  for (uint8_t i = 0; i < 4; i++) b[i] = _bus.read();
+  if (_bus->requestFrom(ADR_HDC, (uint8_t)4) != 4) return;
+  for (uint8_t i = 0; i < 4; i++) b[i] = _bus->read();
   uint16_t rt = (b[0] << 8) | b[1], rh = (b[2] << 8) | b[3];
   _m.temperatureC = rt / 65536.0f * 165.0f - 40.0f;
   _m.humiditePct  = rh / 65536.0f * 100.0f;
@@ -129,21 +134,21 @@ void Environnement::activerQualiteAir(bool actif) {
     uint8_t etat;
     if (!lireRegs(_adrCcs, 0x00, &etat, 1) || !(etat & 0x10)) return;  // pas d'application valide
     if (!(etat & 0x80)) {                         // encore en mode démarrage : lancer l'appli
-      _bus.beginTransmission(_adrCcs);
-      _bus.write(0xF4);
-      if (_bus.endTransmission() != 0) return;
+      _bus->beginTransmission(_adrCcs);
+      _bus->write(0xF4);
+      if (_bus->endTransmission() != 0) return;
       delay(5);
     }
     const uint8_t mode = 0x10;                    // une mesure par seconde
     if (!ecrire(_adrCcs, 0x01, &mode, 1)) return;
     _ccsActif = true;
-    Serial.println("Qualité d'air : démarrée (secteur)");
+    Serial.println("Qualité d'air : démarrée");
   } else {
     const uint8_t repos = 0x00;
     ecrire(_adrCcs, 0x01, &repos, 1);
     _ccsActif = false;
     _m.eco2Ppm = _m.tvocPpb = 0;
-    Serial.println("Qualité d'air : arrêtée (batterie)");
+    Serial.println("Qualité d'air : arrêtée");
   }
 }
 

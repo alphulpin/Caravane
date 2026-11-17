@@ -18,6 +18,8 @@
                        "press_hpa" et, sur secteur seulement, "eco2_ppm" et "tvoc_ppb".
                        Envoyé à la connexion, après chaque commande et toutes les 10 s.
                        {"erreur":"json"} si illisible.
+  Administration : "comm", "wifi_ssid", "wifi_mdp", "sb_url", "sb_cle", "sb_table", "envoi_s",
+                   "broches":{"sda","scl","secteur"} (-1 = défaut), "cmd":"scan_wifi"|"envoyer"|"redemarrer".
 -->
 <style>
 /* Tableau de bord d'instrument : une colonne, tension batterie en tête, réglages dessous. */
@@ -102,6 +104,13 @@ details{background:var(--carte);border:1px solid var(--trait);border-radius:10px
 summary{cursor:pointer;font-size:.78rem;text-transform:uppercase;letter-spacing:.09em;color:var(--doux);font-weight:600}
 pre{margin:10px 0 0;max-height:220px;overflow:auto;font:.74rem/1.5 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;color:var(--doux)}
 input[type=number]{text-align:right}
+select,input[type=password],input[type=url]{width:100%;min-height:44px;padding:0 8px;font:400 1rem var(--sans);border:1px solid var(--trait);border-radius:8px;background:var(--fond);color:var(--texte)}
+.pile{display:flex;flex-direction:column;gap:4px}
+.pile label{font-weight:600}
+.pile small{color:var(--doux);font-size:.82rem}
+.sous{font-size:.78rem;text-transform:uppercase;letter-spacing:.09em;color:var(--doux);font-weight:600;margin-top:6px}
+details.admin[open]{display:flex;flex-direction:column;gap:12px}
+details.admin > summary{margin-bottom:4px}
 input[type=text]{font-family:var(--sans);font-weight:400}
 </style>
 </head>
@@ -147,7 +156,7 @@ input[type=text]{font-family:var(--sans);font-weight:400}
       <div><dt>CO₂ équivalent</dt><dd id="eco2">--</dd></div>
       <div><dt>COV totaux</dt><dd id="tvoc">--</dd></div>
     </dl>
-    <p class="note">La qualité d'air (CO₂, COV) n'est mesurée que sur secteur.</p>
+    <p class="note">La qualité d'air (CO₂, COV) n'est mesurée que sur secteur ou en mode Wi-Fi.</p>
   </section>
 
   <section aria-labelledby="tRegl">
@@ -177,6 +186,76 @@ input[type=text]{font-family:var(--sans);font-weight:400}
       </div>
     </form>
   </section>
+
+  <details class="admin" id="admin">
+    <summary>Administration</summary>
+    <dl>
+      <div><dt>Carte</dt><dd id="aCarte">--</dd></div>
+      <div><dt>Identifiant</dt><dd id="aId" style="font-size:.85rem">--</dd></div>
+      <div><dt>Wi-Fi</dt><dd id="aWifi">--</dd></div>
+      <div><dt>Dernier envoi Supabase</dt><dd id="aEnvoi">--</dd></div>
+    </dl>
+    <div class="avis" id="avisRedem" hidden>Broches modifiées : elles seront prises en compte au prochain redémarrage.</div>
+
+    <p class="sous">Communication</p>
+    <div class="pile">
+      <label for="comm">Mode de communication</label>
+      <select id="comm">
+        <option value="aucun">Aucune (Bluetooth seul, veille sur batterie)</option>
+        <option value="wifi">Wi-Fi</option>
+        <option value="lora">LoRa</option>
+        <option value="wifi_lora">Wi-Fi et LoRa</option>
+      </select>
+      <small>En Wi-Fi, la carte ne se met plus en veille : le capteur de qualité d'air reste chaud et les mesures partent vers Supabase à intervalle régulier. LoRa : à venir (V3 seulement).</small>
+    </div>
+
+    <p class="sous">Réseau Wi-Fi</p>
+    <div class="pile">
+      <label for="wifiSsid">Nom du réseau</label>
+      <input id="wifiSsid" type="text" list="listeWifi" autocomplete="off" placeholder="choisir ou saisir">
+      <datalist id="listeWifi"></datalist>
+      <button id="btnScan" type="button" disabled>Chercher les réseaux</button>
+    </div>
+    <div class="pile">
+      <label for="wifiMdp">Mot de passe</label>
+      <input id="wifiMdp" type="password" autocomplete="new-password" placeholder="inchangé si vide">
+    </div>
+
+    <p class="sous">Supabase</p>
+    <div class="pile">
+      <label for="sbUrl">Adresse du projet</label>
+      <input id="sbUrl" type="url" autocomplete="off" placeholder="https://xxxx.supabase.co">
+    </div>
+    <div class="pile">
+      <label for="sbCle">Clé API</label>
+      <input id="sbCle" type="password" autocomplete="off" placeholder="inchangée si vide">
+      <small>Clé publique (anon / publishable) : la table n'autorise que l'insertion. Elle n'est jamais relue depuis la carte.</small>
+    </div>
+    <div class="champ">
+      <label for="sbTable">Table</label>
+      <input id="sbTable" type="text" autocomplete="off" style="grid-column:1/-1">
+    </div>
+    <div class="champ">
+      <label for="envoi">Période d'envoi</label>
+      <div class="saisie"><input id="envoi" type="number" inputmode="decimal" min="0.5" max="1440" step="0.5"><span>min</span></div>
+    </div>
+    <div class="rang">
+      <button id="btnEnvoiNow" type="button" disabled>Envoyer maintenant</button>
+      <button class="principal" id="btnAdmin" type="button" disabled>Enregistrer</button>
+    </div>
+    <p class="note" id="noteAdmin" role="status"></p>
+
+    <p class="sous">Broches (capteurs et contact secteur)</p>
+    <div class="champ"><label for="bSda">SDA capteurs</label><div class="saisie"><input id="bSda" type="number" inputmode="numeric" min="0" max="48"><span id="dSda"></span></div></div>
+    <div class="champ"><label for="bScl">SCL capteurs</label><div class="saisie"><input id="bScl" type="number" inputmode="numeric" min="0" max="48"><span id="dScl"></span></div></div>
+    <div class="champ"><label for="bSect">Contact secteur</label><div class="saisie"><input id="bSect" type="number" inputmode="numeric" min="0" max="48"><span id="dSect"></span></div></div>
+    <small class="note">Le modèle de carte (V2 ou V3) est fixé à la compilation ; seules ces broches se règlent ici. Entre parenthèses : valeur par défaut de la carte.</small>
+    <div class="rang">
+      <button id="btnBrochesDefaut" type="button" disabled>Broches par défaut</button>
+      <button id="btnBroches" type="button" disabled>Enregistrer et redémarrer</button>
+    </div>
+    <button id="btnRedem" type="button" disabled>Redémarrer la carte</button>
+  </details>
 
   <details>
     <summary>Journal des échanges</summary>
@@ -210,7 +289,7 @@ function note(id, texte, ton){ const n = $(id); n.textContent = texte; n.dataset
 function majEtat(etat, texte){
   const e = $("etat"); e.dataset.etat = etat; e.textContent = texte;
   const actif = etat === "ok" || etat === "demo";
-  for (const id of ["btnLire","btnEcrire","btnHeure","btnDefaut"]) $(id).disabled = !actif;
+  for (const id of ["btnLire","btnEcrire","btnHeure","btnDefaut","btnScan","btnAdmin","btnEnvoiNow","btnBroches","btnBrochesDefaut","btnRedem"]) $(id).disabled = !actif;
   $("btnConn").textContent = etat === "ok" ? "Déconnecter" : "Connecter la carte";
   $("btnConn").disabled = etat === "attente" || etat === "demo";
   $("btnDemo").textContent = etat === "demo" ? "Quitter la démonstration" : "Démonstration sans carte";
@@ -255,6 +334,51 @@ function afficherEtatCarte(m){
   $("eco2").innerHTML  = unite(m.eco2_ppm, 0, "ppm");
   $("tvoc").innerHTML  = unite(m.tvoc_ppb, 0, "ppb");
   $("alim").textContent = m.secteur == null ? "--" : (m.secteur ? "Secteur 230 V" : "Batterie");
+  afficherAdmin(m, remplir);
+}
+
+function afficherAdmin(m, remplir){
+  if (m.carte == null) return;                     // ancien firmware sans administration
+  $("aCarte").textContent = "Heltec " + m.carte;
+  $("aId").textContent = m.appareil || "--";
+  const w = {inactif: "désactivé", connexion: "connexion…", connecte: "connecté"}[m.wifi_etat] || "--";
+  $("aWifi").innerHTML = w + (m.wifi_etat === "connecte" && m.wifi_rssi ? " <small>" + m.wifi_rssi + " dBm</small>" : "");
+  const e = m.dernier_envoi;
+  if (!e) $("aEnvoi").textContent = "aucun";
+  else {
+    const age = e.age_s < 120 ? e.age_s + " s" : Math.round(e.age_s / 60) + " min";
+    const ok = e.code === 201 || e.code === 200 || e.code === 204;
+    $("aEnvoi").innerHTML = (ok ? "réussi" : e.code === -100 ? "Wi-Fi absent" : "échec (" + e.code + ")") + " <small>il y a " + age + "</small>";
+  }
+  for (const o of $("comm").options) if (o.value.includes("lora")) o.disabled = !m.lora_dispo;
+  remplir("comm", m.comm);
+  remplir("wifiSsid", m.wifi_ssid);
+  $("wifiMdp").placeholder = m.wifi_mdp_def ? "défini — inchangé si vide" : "aucun";
+  remplir("sbUrl", m.sb_url);
+  remplir("sbTable", m.sb_table);
+  $("sbCle").placeholder = m.sb_cle_def ? "définie — inchangée si vide" : "à renseigner";
+  remplir("envoi", m.envoi_s != null ? +(m.envoi_s / 60).toFixed(2) : null);
+  if (m.broches) {
+    remplir("bSda", m.broches.sda); remplir("bScl", m.broches.scl); remplir("bSect", m.broches.secteur);
+  }
+  if (m.broches_defaut) {
+    $("dSda").textContent = "(" + m.broches_defaut.sda + ")";
+    $("dScl").textContent = "(" + m.broches_defaut.scl + ")";
+    $("dSect").textContent = "(" + m.broches_defaut.secteur + ")";
+  }
+  $("avisRedem").hidden = !m.redemarrage_requis;
+}
+
+function afficherReseaux(liste){
+  const dl = $("listeWifi");
+  dl.innerHTML = "";
+  for (const r of liste) {
+    const o = document.createElement("option");
+    o.value = r.ssid;
+    o.label = r.rssi + " dBm" + (r.ouvert ? " · ouvert" : "");
+    dl.appendChild(o);
+  }
+  note("noteAdmin", liste.length ? liste.length + " réseau(x) trouvé(s) : touchez le champ « Nom du réseau » pour choisir." : "Aucun réseau trouvé.", liste.length ? "ok" : "err");
 }
 
 function recevoir(ligne){
@@ -264,11 +388,15 @@ function recevoir(ligne){
   let m;
   try { m = JSON.parse(ligne); } catch { return; }   // ligne non JSON : reste visible dans le journal
   if (m.erreur) { attente = ""; return erreur("La carte n'a pas compris la commande (" + m.erreur + ")."); }
+  if (m.wifi_reseaux) return afficherReseaux(m.wifi_reseaux);   // réponse à la recherche Wi-Fi
   afficherEtatCarte(m);
+  if (attente === "admin") for (const id of CHAMPS_ADMIN) delete $(id).dataset.modifie;
   if (attente === "cfg" || attente === "defaut") for (const id of ["msg","inact","veille"]) delete $(id).dataset.modifie;
   if (attente === "cfg") note("noteCfg", "Réglages enregistrés. Vérifiez les valeurs relues ci-dessus.", "ok");
   if (attente === "defaut") note("noteCfg", "Valeurs par défaut rétablies.", "ok");
   if (attente === "heure") note("noteHeure", "Horloge de la carte mise à l'heure.", "ok");
+  if (attente === "admin") note("noteAdmin", "Administration enregistrée.", "ok");
+  if (attente === "envoi") note("noteAdmin", "Envoi demandé : voir « Dernier envoi Supabase ».", "ok");
   attente = "";
 }
 
@@ -339,10 +467,14 @@ async function connecter(){
 function carteSimulee(){
   const defaut = {msg: "hello world", tz_min: 60, inactivite_s: 300, veille_s: 900};
   let c = {...defaut}, decalage = null;             // decalage nul = heure non réglée
+  const a = {carte: "V3", lora_dispo: true, appareil: "caravane-demo01", comm: "aucun", wifi_ssid: "",
+             wifi_mdp_def: false, wifi_etat: "inactif", sb_url: "", sb_table: "caravane_mesures",
+             sb_cle_def: false, envoi_s: 300, broches: {sda: 41, scl: 42, secteur: 7},
+             broches_defaut: {sda: 41, scl: 42, secteur: 7}};
   const etat = () => ({...c, heure: decalage == null ? 0 : Math.round(Date.now() / 1000) + decalage,
                        vbat_mv: 3950 + Math.round(Math.random() * 40), secteur: false,
                        temp_c: +(19 + Math.random()).toFixed(1), hum_pct: +(55 + Math.random() * 3).toFixed(1),
-                       press_hpa: +(1013 + Math.random() * 2).toFixed(1)});
+                       press_hpa: +(1013 + Math.random() * 2).toFixed(1), ...a});
   return {
     envoyer(texte){
       let m;
@@ -356,6 +488,20 @@ function carteSimulee(){
         if (m.tz_min) c.tz_min = m.tz_min;
         if (m.inactivite_s) c.inactivite_s = Math.min(3600, Math.max(30, m.inactivite_s));
         if (m.veille_s) c.veille_s = Math.min(86400, Math.max(60, m.veille_s));
+        if (m.comm) a.comm = m.comm;
+        if (m.wifi_ssid) a.wifi_ssid = m.wifi_ssid;
+        if (m.wifi_mdp) a.wifi_mdp_def = true;
+        if (m.sb_url) a.sb_url = m.sb_url;
+        if (m.sb_cle) a.sb_cle_def = true;
+        if (m.sb_table) a.sb_table = m.sb_table;
+        if (m.envoi_s) a.envoi_s = m.envoi_s;
+        if (m.broches) { for (const k in m.broches) a.broches[k] = m.broches[k] < 0 ? a.broches_defaut[k] : m.broches[k]; a.redemarrage_requis = true; }
+        a.wifi_etat = a.comm.startsWith("wifi") ? (a.wifi_ssid ? "connecte" : "connexion") : "inactif";
+        a.wifi_rssi = a.wifi_etat === "connecte" ? -58 : undefined;
+        if (m.cmd === "scan_wifi") recevoir(JSON.stringify({wifi_reseaux: [{ssid: "Maison", rssi: -52, ouvert: false},
+                                                           {ssid: "Caravane-Box", rssi: -71, ouvert: false}, {ssid: "Invités", rssi: -80, ouvert: true}]}));
+        if (m.cmd === "envoyer") a.dernier_envoi = {code: a.wifi_etat === "connecte" && a.sb_cle_def ? 201 : -100, age_s: 0};
+        if (m.cmd === "redemarrer") delete a.redemarrage_requis;
         recevoir(JSON.stringify(etat()));
       }, 150);
       return Promise.resolve();
@@ -395,7 +541,45 @@ $("formCfg").addEventListener("submit", ev => {
   envoyer(ordre, "cfg");
 });
 
-for (const id of ["msg","inact","veille"]) $(id).addEventListener("input", () => { $(id).dataset.modifie = "1"; });
+const CHAMPS_ADMIN = ["comm","wifiSsid","sbUrl","sbTable","envoi","bSda","bScl","bSect"];
+$("btnScan").addEventListener("click", () => { note("noteAdmin", "Recherche des réseaux (quelques secondes)…"); envoyer({cmd: "scan_wifi"}, "scan"); });
+$("btnAdmin").addEventListener("click", () => {
+  const ordre = {comm: $("comm").value};
+  const ssid = $("wifiSsid").value.trim(), mdp = $("wifiMdp").value;
+  if (ssid) ordre.wifi_ssid = ssid;
+  if (mdp) ordre.wifi_mdp = mdp;
+  const url = $("sbUrl").value.trim(), cle = $("sbCle").value.trim(), table = $("sbTable").value.trim();
+  if (url) {
+    if (!/^https:\/\/[^\s/]+/.test(url)) return note("noteAdmin", "L'adresse Supabase doit commencer par https://", "err");
+    ordre.sb_url = url;
+  }
+  if (cle) ordre.sb_cle = cle;
+  if (table) ordre.sb_table = table;
+  const env = parseFloat($("envoi").value.replace(",", "."));
+  if ($("envoi").value !== "") {
+    if (!(env >= 0.5 && env <= 1440)) return note("noteAdmin", "Période d'envoi : entre 0,5 et 1440 minutes.", "err");
+    ordre.envoi_s = Math.round(env * 60);
+  }
+  if (ordre.comm.startsWith("wifi") && !ssid) return note("noteAdmin", "Choisissez d'abord un réseau Wi-Fi.", "err");
+  $("wifiMdp").value = ""; $("sbCle").value = "";
+  note("noteAdmin", "Envoi…");
+  envoyer(ordre, "admin");
+});
+$("btnEnvoiNow").addEventListener("click", () => { note("noteAdmin", "Envoi vers Supabase…"); envoyer({cmd: "envoyer"}, "envoi"); });
+function envoyerBroches(broches){
+  note("noteAdmin", "Broches envoyées, la carte redémarre : reconnectez-vous dans quelques secondes.", "ok");
+  envoyer({broches, cmd: "redemarrer"}, "admin");
+}
+$("btnBroches").addEventListener("click", () => {
+  const lire = id => $(id).value === "" ? undefined : parseInt($(id).value, 10);
+  const b = {sda: lire("bSda"), scl: lire("bScl"), secteur: lire("bSect")};
+  for (const k in b) if (b[k] !== undefined && !(b[k] >= 0 && b[k] <= 48)) return note("noteAdmin", "Broche invalide : entre 0 et 48.", "err");
+  envoyerBroches(b);
+});
+$("btnBrochesDefaut").addEventListener("click", () => envoyerBroches({sda: -1, scl: -1, secteur: -1}));
+$("btnRedem").addEventListener("click", () => { note("noteAdmin", "Redémarrage demandé."); envoyer({cmd: "redemarrer"}); });
+
+for (const id of ["msg","inact","veille", ...CHAMPS_ADMIN]) $(id).addEventListener("input", () => { $(id).dataset.modifie = "1"; });
 if (!navigator.bluetooth) { $("avisNav").hidden = false; $("btnConn").hidden = true; }
 </script>
 </body>

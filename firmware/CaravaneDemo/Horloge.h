@@ -16,6 +16,17 @@ public:
   }
 
   static bool valide()      { return time(nullptr) > 1700000000; }
+
+  // "2026-11-17T06:14:00Z" (UTC), pour Supabase
+  static String iso8601() {
+    time_t maintenant = time(nullptr);
+    struct tm u;
+    gmtime_r(&maintenant, &u);
+    char t[48];
+    snprintf(t, sizeof(t), "%04d-%02d-%02dT%02d:%02d:%02dZ",
+             u.tm_year + 1900, u.tm_mon + 1, u.tm_mday, u.tm_hour, u.tm_min, u.tm_sec);
+    return t;
+  }
   static time_t epoch()     { return time(nullptr); }
 
   // "16/11/2026 08:10:42" en heure locale, ou "n/d" si l'heure n'a jamais été réglée.
@@ -24,8 +35,10 @@ public:
     time_t local = time(nullptr) + (time_t)fuseauMin * 60;
     struct tm t;
     gmtime_r(&local, &t);
-    char tampon[24];
-    strftime(tampon, sizeof(tampon), "%d/%m/%Y %H:%M:%S", &t);
+    // snprintf plutôt que strftime : strftime occupe 3 Ko d'IRAM, qui manquent sur l'ESP32 (V2)
+    char tampon[48];
+    snprintf(tampon, sizeof(tampon), "%02d/%02d/%04d %02d:%02d:%02d",
+             t.tm_mday, t.tm_mon + 1, t.tm_year + 1900, t.tm_hour, t.tm_min, t.tm_sec);
     return tampon;
   }
 };

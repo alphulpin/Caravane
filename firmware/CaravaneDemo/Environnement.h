@@ -1,7 +1,8 @@
-// Environnement — capteurs de la carte CJMCU-8128 sur un second bus I2C (Wire1) :
+// Environnement — capteurs de la carte CJMCU-8128 en I2C :
 //   HDC1080 (0x40) : température et humidité
 //   BMP280  (0x76) : pression
-//   CCS811  (0x5A ou 0x5B) : qualité d'air (eCO2, COV) — utilisé seulement sur secteur
+//   CCS811  (0x5A ou 0x5B) : qualité d'air (eCO2, COV) — utilisé sur secteur ou en mode Wi-Fi
+// Bus : Wire1 (second bus) si les broches diffèrent de celles de l'écran, sinon Wire partagé.
 // Pilotes minimalistes écrits ici, sans bibliothèque externe.
 #pragma once
 #include <Arduino.h>
@@ -18,11 +19,13 @@ struct Mesures {
 
 class Environnement {
 public:
-  void demarrer(uint8_t sda, uint8_t scl);  // à appeler après la mise sous tension de Ve
+  // À appeler après la mise sous tension de Ve/Vext et après l'écran.
+  // partage = mêmes broches que l'écran : on réutilise Wire, déjà démarré par l'écran.
+  void demarrer(uint8_t sda, uint8_t scl, bool partage);
   void balayer();                           // liste les adresses I2C sur le port série
   void lire();                              // HDC1080 + BMP280 (+ CCS811 s'il tourne)
 
-  // Qualité d'air : démarrée sur secteur, arrêtée sur batterie.
+  // Qualité d'air : démarrée quand le capteur peut rester chaud (secteur ou Wi-Fi).
   void activerQualiteAir(bool actif);
   bool qualiteAirActive() const { return _ccsActif; }
 
@@ -38,7 +41,7 @@ private:
   void lireBmp();
   void lireCcs();
 
-  TwoWire& _bus = Wire1;     // Wire est pris par l'écran (broches 17/18)
+  TwoWire* _bus = &Wire1;
   Mesures _m;
   uint8_t _adrCcs = 0;
   bool _ccsActif = false;
