@@ -1,0 +1,809 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_SUPABASE",
+      "label": "Supabase (PostgreSQL)",
+      "description": "Base Supabase du projet caravane",
+      "type": "datasource",
+      "pluginId": "grafana-postgresql-datasource",
+      "pluginName": "PostgreSQL"
+    }
+  ],
+  "__requires": [
+    {
+      "type": "datasource",
+      "id": "grafana-postgresql-datasource",
+      "name": "PostgreSQL",
+      "version": "1.0.0"
+    },
+    {
+      "type": "grafana",
+      "id": "grafana",
+      "name": "Grafana",
+      "version": "11.0.0"
+    }
+  ],
+  "title": "Caravane — relevés",
+  "uid": "caravane-releves",
+  "description": "Relevés des cartes caravane (dépôt alphulpin/Caravane)",
+  "tags": [
+    "caravane"
+  ],
+  "timezone": "browser",
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "5m",
+  "time": {
+    "from": "now-2d",
+    "to": "now"
+  },
+  "schemaVersion": 39,
+  "version": 1,
+  "templating": {
+    "list": [
+      {
+        "name": "carte",
+        "label": "Carte",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "${DS_SUPABASE}"
+        },
+        "query": "select coalesce(nom, appareil) as __text, appareil as __value from caravane_cartes order by 1",
+        "definition": "select coalesce(nom, appareil) as __text, appareil as __value from caravane_cartes order by 1",
+        "refresh": 1,
+        "multi": true,
+        "includeAll": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "sort": 0
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Température",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_SUPABASE}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 5,
+        "h": 5
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_SUPABASE}"
+          },
+          "refId": "A",
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "select coalesce(mesure_le, recu_le) as time, coalesce(nom, appareil) as metric, temp_c as value\nfrom caravane_mesures\nwhere appareil in ($carte) and $__timeFilter(coalesce(mesure_le, recu_le)) and temp_c is not null\norder by 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 10
+              },
+              {
+                "color": "orange",
+                "value": 28
+              },
+              {
+                "color": "red",
+                "value": 35
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "value_and_name",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "showPercentChange": false
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Humidité",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_SUPABASE}"
+      },
+      "gridPos": {
+        "x": 5,
+        "y": 0,
+        "w": 5,
+        "h": 5
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_SUPABASE}"
+          },
+          "refId": "A",
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "select coalesce(mesure_le, recu_le) as time, coalesce(nom, appareil) as metric, hum_pct as value\nfrom caravane_mesures\nwhere appareil in ($carte) and $__timeFilter(coalesce(mesure_le, recu_le)) and hum_pct is not null\norder by 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "humidity",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "orange",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 30
+              },
+              {
+                "color": "orange",
+                "value": 65
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "value_and_name",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "showPercentChange": false
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Pression",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_SUPABASE}"
+      },
+      "gridPos": {
+        "x": 10,
+        "y": 0,
+        "w": 5,
+        "h": 5
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_SUPABASE}"
+          },
+          "refId": "A",
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "select coalesce(mesure_le, recu_le) as time, coalesce(nom, appareil) as metric, press_hpa as value\nfrom caravane_mesures\nwhere appareil in ($carte) and $__timeFilter(coalesce(mesure_le, recu_le)) and press_hpa is not null\norder by 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "pressurehpa",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "value_and_name",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "showPercentChange": false
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Alimentation",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_SUPABASE}"
+      },
+      "gridPos": {
+        "x": 15,
+        "y": 0,
+        "w": 4,
+        "h": 5
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_SUPABASE}"
+          },
+          "refId": "A",
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "select coalesce(mesure_le, recu_le) as time, coalesce(nom, appareil) as metric, case when secteur then 1 else 0 end as value\nfrom caravane_mesures\nwhere appareil in ($carte) and $__timeFilter(coalesce(mesure_le, recu_le)) and secteur is not null\norder by 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "Batterie",
+                  "color": "orange"
+                },
+                "1": {
+                  "text": "Secteur",
+                  "color": "green"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "showPercentChange": false
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Dernier relevé",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_SUPABASE}"
+      },
+      "gridPos": {
+        "x": 19,
+        "y": 0,
+        "w": 5,
+        "h": 5
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_SUPABASE}"
+          },
+          "refId": "A",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "select coalesce(nom, appareil) as carte, extract(epoch from max(coalesce(mesure_le, recu_le))) * 1000 as \"dernier relevé\"\nfrom caravane_mesures\nwhere appareil in ($carte)\ngroup by 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dateTimeFromNow",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "showPercentChange": false
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Température",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_SUPABASE}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_SUPABASE}"
+          },
+          "refId": "A",
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "select coalesce(mesure_le, recu_le) as time, coalesce(nom, appareil) as metric, temp_c as value\nfrom caravane_mesures\nwhere appareil in ($carte) and $__timeFilter(coalesce(mesure_le, recu_le)) and temp_c is not null\norder by 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "decimals": 1,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "auto",
+            "spanNulls": 3600000,
+            "drawStyle": "line",
+            "lineInterpolation": "smooth"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Humidité",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_SUPABASE}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 5,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_SUPABASE}"
+          },
+          "refId": "A",
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "select coalesce(mesure_le, recu_le) as time, coalesce(nom, appareil) as metric, hum_pct as value\nfrom caravane_mesures\nwhere appareil in ($carte) and $__timeFilter(coalesce(mesure_le, recu_le)) and hum_pct is not null\norder by 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "humidity",
+          "decimals": 0,
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "auto",
+            "spanNulls": 3600000,
+            "drawStyle": "line",
+            "lineInterpolation": "smooth"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Pression",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_SUPABASE}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_SUPABASE}"
+          },
+          "refId": "A",
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "select coalesce(mesure_le, recu_le) as time, coalesce(nom, appareil) as metric, press_hpa as value\nfrom caravane_mesures\nwhere appareil in ($carte) and $__timeFilter(coalesce(mesure_le, recu_le)) and press_hpa is not null\norder by 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "pressurehpa",
+          "decimals": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "auto",
+            "spanNulls": 3600000,
+            "drawStyle": "line",
+            "lineInterpolation": "smooth"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Qualité d'air (sur secteur ou Wi-Fi)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_SUPABASE}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 13,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_SUPABASE}"
+          },
+          "refId": "A",
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "select coalesce(mesure_le, recu_le) as time, coalesce(nom, appareil) || ' CO2 éq. (ppm)' as metric, eco2_ppm as value\nfrom caravane_mesures\nwhere appareil in ($carte) and $__timeFilter(coalesce(mesure_le, recu_le)) and eco2_ppm is not null\norder by 1"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_SUPABASE}"
+          },
+          "refId": "B",
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "select coalesce(mesure_le, recu_le) as time, coalesce(nom, appareil) || ' COV (ppb)' as metric, tvoc_ppb as value\nfrom caravane_mesures\nwhere appareil in ($carte) and $__timeFilter(coalesce(mesure_le, recu_le)) and tvoc_ppb is not null\norder by 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "auto",
+            "spanNulls": 3600000,
+            "drawStyle": "line",
+            "lineInterpolation": "smooth"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1000
+              },
+              {
+                "color": "red",
+                "value": 2000
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "state-timeline",
+      "title": "Alimentation",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_SUPABASE}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 12,
+        "h": 5
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_SUPABASE}"
+          },
+          "refId": "A",
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "select coalesce(mesure_le, recu_le) as time, coalesce(nom, appareil) as metric, case when secteur then 1 else 0 end as value\nfrom caravane_mesures\nwhere appareil in ($carte) and $__timeFilter(coalesce(mesure_le, recu_le)) and secteur is not null\norder by 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "Batterie",
+                  "color": "orange"
+                },
+                "1": {
+                  "text": "Secteur",
+                  "color": "green"
+                }
+              }
+            }
+          ],
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "mergeValues": true,
+        "showValue": "never",
+        "alignValue": "left",
+        "rowHeight": 0.8,
+        "legend": {
+          "showLegend": false
+        }
+      }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Batterie LiPo de la carte (V3)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_SUPABASE}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 21,
+        "w": 12,
+        "h": 5
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_SUPABASE}"
+          },
+          "refId": "A",
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "select coalesce(mesure_le, recu_le) as time, coalesce(nom, appareil) as metric, vbat_mv / 1000.0 as value\nfrom caravane_mesures\nwhere appareil in ($carte) and $__timeFilter(coalesce(mesure_le, recu_le)) and vbat_mv is not null\norder by 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "volt",
+          "decimals": 2,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "auto",
+            "spanNulls": 3600000,
+            "drawStyle": "line",
+            "lineInterpolation": "smooth"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 3.5
+              },
+              {
+                "color": "green",
+                "value": 3.7
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 12,
+      "type": "table",
+      "title": "Derniers relevés",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_SUPABASE}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 24,
+        "h": 9
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_SUPABASE}"
+          },
+          "refId": "A",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "select coalesce(mesure_le, recu_le) as \"heure\", coalesce(nom, appareil) as \"carte\", releve_id as \"n°\", source,\n  case when secteur then 'secteur' else 'batterie' end as \"alim.\",\n  temp_c as \"°C\", hum_pct as \"% HR\", press_hpa as \"hPa\", eco2_ppm as \"CO2 éq.\",\n  tvoc_ppb as \"COV\", vbat_mv as \"LiPo mV\", recu_le as \"reçu le\"\nfrom caravane_mesures\nwhere appareil in ($carte) and $__timeFilter(coalesce(mesure_le, recu_le))\norder by 1 desc\nlimit 200"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      }
+    }
+  ]
+}
