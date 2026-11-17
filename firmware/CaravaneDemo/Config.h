@@ -49,18 +49,20 @@ constexpr uint8_t BROCHE_BOUTON = 0;     // bouton USER/PRG, actif à l'état ba
 // Contact secteur : contact sec du relais 230 V entre la broche secteur et GND (fermé = secteur).
 
 // ---------- Valeurs par défaut (codées en dur) ----------
-#define MESSAGE_DEFAUT "hello world"
+#define NOM_DEFAUT "Hello world"          // affiché tant que la carte n'a pas de nom
 #define SB_TABLE_DEFAUT "caravane_mesures"
 constexpr uint32_t INACTIVITE_DEFAUT_S = 5 * 60;   // avant mise en veille profonde
 constexpr uint32_t VEILLE_DEFAUT_S     = 15 * 60;  // durée de la veille profonde
-constexpr uint32_t ENVOI_DEFAUT_S      = 5 * 60;   // période d'envoi Wi-Fi vers Supabase
+constexpr uint32_t RELEVE_DEFAUT_S     = 15 * 60;  // période des relevés quand la carte reste éveillée
 constexpr int16_t  FUSEAU_DEFAUT_MIN   = 60;       // décalage heure locale / UTC (hiver France)
 
 // Bornes acceptées pour les réglages venant du téléphone
 constexpr uint32_t INACTIVITE_MIN_S = 30,  INACTIVITE_MAX_S = 3600;
 constexpr uint32_t VEILLE_MIN_S     = 60,  VEILLE_MAX_S     = 86400;
-constexpr uint32_t ENVOI_MIN_S      = 30,  ENVOI_MAX_S      = 86400;
-constexpr size_t   MESSAGE_LONGUEUR_MAX = 42;      // 2 lignes de 21 caractères
+constexpr uint32_t RELEVE_MIN_S     = 60,  RELEVE_MAX_S     = 86400;
+constexpr size_t   NOM_LONGUEUR_MAX = 21;          // une ligne d'écran
+constexpr uint16_t RELEVES_CAPACITE = 1000;        // relevés gardés en flash (≈10 jours à 4 par heure)
+constexpr uint8_t  RELEVES_PAR_LOT  = 20;          // relevés par envoi Supabase
 
 // Modes de communication
 enum class ModeComm : uint8_t { Aucun = 0, Wifi = 1, Lora = 2, WifiLora = 3 };
@@ -74,12 +76,13 @@ enum class ModeComm : uint8_t { Aucun = 0, Wifi = 1, Lora = 2, WifiLora = 3 };
 
 // Échanges : une ligne JSON terminée par '\n', dans les deux sens.
 // Un champ absent, vide ("") ou nul (0) ne modifie rien (sauf les broches, voir plus bas).
-#define CLE_MESSAGE    "msg"           // texte d'accueil
+#define CLE_NOM        "nom"           // nom de la carte (21 caractères), affiché et publié
 #define CLE_HEURE      "heure"         // heure du téléphone, epoch UTC (secondes ou millisecondes)
 #define CLE_FUSEAU     "tz_min"        // décalage local en minutes (= -getTimezoneOffset() en JS)
 #define CLE_INACTIVITE "inactivite_s"  // délai d'inactivité avant veille, en secondes
 #define CLE_VEILLE     "veille_s"      // durée de veille profonde, en secondes
-#define CLE_DEFAUT     "defaut"        // true = retour aux valeurs codées en dur (hors Wi-Fi/Supabase)
+#define CLE_RELEVE     "releve_s"      // période des relevés quand la carte reste éveillée, en secondes
+#define CLE_DEFAUT     "defaut"        // true = temporisations d'origine (nom, Wi-Fi, Supabase, broches conservés)
 // Administration
 #define CLE_COMM       "comm"          // "aucun" | "wifi" | "lora" | "wifi_lora"
 #define CLE_WIFI_SSID  "wifi_ssid"     // nom du réseau Wi-Fi
@@ -87,11 +90,12 @@ enum class ModeComm : uint8_t { Aucun = 0, Wifi = 1, Lora = 2, WifiLora = 3 };
 #define CLE_SB_URL     "sb_url"        // https://<projet>.supabase.co
 #define CLE_SB_CLE     "sb_cle"        // clé API Supabase (jamais renvoyée)
 #define CLE_SB_TABLE   "sb_table"      // table de destination
-#define CLE_ENVOI      "envoi_s"       // période d'envoi Wi-Fi, en secondes
 #define CLE_BROCHES    "broches"       // {"sda":41,"scl":42,"secteur":7} ; -1 = défaut de la carte
-#define CLE_CMD        "cmd"           // "scan_wifi" | "envoyer" | "redemarrer"
+#define CLE_CMD        "cmd"           // "scan_wifi" | "releve" | "effacer_nom" | "effacer_releves" | "redemarrer"
 // Réponses seulement
 #define CLE_CARTE      "carte"         // "V2" ou "V3"
+#define CLE_ID         "id_carte"      // n° de série : adresse MAC d'usine, 12 chiffres hexadécimaux
+#define CLE_DEVEUI     "dev_eui"       // identifiant LoRaWAN (V3), tiré de l'adresse MAC
 #define CLE_VBAT       "vbat_mv"       // tension LiPo de la carte, en mV (V3 seulement)
 #define CLE_SECTEUR    "secteur"       // true si secteur présent
 #define CLE_TEMP       "temp_c"        // température HDC1080, °C

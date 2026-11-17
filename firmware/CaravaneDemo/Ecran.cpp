@@ -14,22 +14,24 @@ void Ecran::demarrer(bool busPartage) {
   _oled.enableUTF8Print();           // pour les accents
   _oled.setFont(u8g2_font_6x12_tf);
   _endormi = false;
+  _demarre = true;
 }
 
 void Ecran::eteindre() {
-  _oled.setPowerSave(1);
+  if (_demarre) _oled.setPowerSave(1);   // pas d'écran démarré lors d'un réveil rapide
+  pinMode(BROCHE_VEXT, OUTPUT);
   digitalWrite(BROCHE_VEXT, HIGH);
 }
 
 void Ecran::sommeil(bool actif) {
-  if (actif == _endormi) return;
+  if (!_demarre || actif == _endormi) return;
   _oled.setPowerSave(actif ? 1 : 0);
   _endormi = actif;
 }
 
 void Ecran::afficher(const String& l1, const String& l2, const String& l3, const String& l4,
                      const String& etat) {
-  if (_endormi) return;
+  if (!_demarre || _endormi) return;
   _oled.clearBuffer();
   const String* lignes[4] = { &l1, &l2, &l3, &l4 };
   for (uint8_t i = 0; i < 4; i++) {

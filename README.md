@@ -28,17 +28,23 @@ Domotique de caravane sur carte Heltec (ESP32) : surveillance de l'alimentation 
 
 Le modèle est reconnu à la compilation (ESP32-S3 → V3, ESP32 → V2) ; un même binaire ne peut pas servir aux deux puces.
 
-### Modes de fonctionnement
-- **Aucune communication** : sur batterie, veille profonde après 5 min sans activité, réveil toutes les 15 min, par le bouton ou au retour du secteur.
-- **Secteur** : pas de veille, qualité d'air (CCS811) active ; l'écran s'éteint après 5 min sans activité.
-- **Wi-Fi** : pas de veille, capteur de qualité d'air maintenu chaud, heure réglée par Internet (NTP), mesures écrites directement dans Supabase toutes les 5 min (réglable).
-- **LoRa** : à venir (V3).
+### Identification
+- **Nom** : choisi depuis le téléphone, gardé en flash, affiché en première ligne de l'écran (« Hello world » tant qu'il n'est pas défini) et publié dans Supabase.
+- **N° de série** : l'adresse MAC d'usine de la puce (12 chiffres hexadécimaux), affichée après « bonjour! » ; c'est la clé `appareil` dans Supabase.
+- **DevEUI** (V3, LoRaWAN) : l'adresse MAC avec `FFFE` au milieu, à déclarer dans TTN.
 
-Tout se règle depuis la page **Administration** du client web : mode de communication, réseau Wi-Fi (recherche depuis la carte), Supabase, période d'envoi, broches.
+### Modes de fonctionnement
+- **Relevés** : à chaque démarrage et à chaque réveil, puis toutes les 15 min (réglable) si la carte reste éveillée. Ils sont gardés en flash (1000 au plus, ≈ 10 jours à 4 par heure) avec une marque « publié ».
+- **Aucune communication** : sur batterie, veille profonde après 5 min sans activité ; réveil toutes les 15 min pour un relevé éclair (sans écran ni Bluetooth), par le bouton ou au retour du secteur.
+- **Secteur** : pas de veille, qualité d'air (CCS811) active ; l'écran s'éteint après 5 min sans activité.
+- **Wi-Fi** : pas de veille, capteur de qualité d'air maintenu chaud, heure réglée par Internet (NTP), publication dans Supabase de **tous les relevés non publiés**, y compris ceux accumulés hors connexion.
+- **LoRa** : à venir (V3) ; seul le dernier relevé sera envoyé.
+
+Tout se règle depuis le client web : nom de la carte (Réglages) ; mode de communication, réseau Wi-Fi (recherche depuis la carte), Supabase, période des relevés, broches (Administration).
 
 ## Supabase
 
-1. Dans le projet Supabase : SQL Editor > coller `supabase/caravane_mesures.sql` > Run.
+1. Dans le projet Supabase : SQL Editor > coller `supabase/caravane_mesures.sql` > Run. (Le script peut être relancé : il met à jour une table existante.)
 2. Project Settings > API : copier l'URL du projet et la clé publique (`anon` ou `publishable`).
 3. Dans le client web, Administration > Supabase : coller l'URL et la clé, Enregistrer.
 

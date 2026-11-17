@@ -13,11 +13,12 @@ const char* Reglages::nomComm(ModeComm m) {
 
 void Reglages::charger() {
   _nvs.begin(ESPACE_NVS, false);
-  _message     = _nvs.getString("msg", MESSAGE_DEFAUT);
+  _nom         = _nvs.getString("nom", "");
   _inactiviteS = _nvs.getULong("inact", INACTIVITE_DEFAUT_S);
   _veilleS     = _nvs.getULong("veille", VEILLE_DEFAUT_S);
   _fuseauMin   = _nvs.getShort("tz", FUSEAU_DEFAUT_MIN);
-  _envoiS      = _nvs.getULong("envoi", ENVOI_DEFAUT_S);
+  _releveS     = _nvs.getULong("releve", RELEVE_DEFAUT_S);
+  _numero      = _nvs.getULong("numero", 0);
   _comm        = (ModeComm)_nvs.getUChar("comm", (uint8_t)ModeComm::Aucun);
   _wifiSsid    = _nvs.getString("wssid", "");
   _wifiMdp     = _nvs.getString("wmdp", "");
@@ -31,24 +32,36 @@ void Reglages::charger() {
 }
 
 void Reglages::reinitialiser() {
-  const char* cles[] = { "msg", "inact", "veille", "tz", "envoi" };
+  const char* cles[] = { "inact", "veille", "tz", "releve" };
   for (const char* c : cles) _nvs.remove(c);
-  _message     = MESSAGE_DEFAUT;
   _inactiviteS = INACTIVITE_DEFAUT_S;
   _veilleS     = VEILLE_DEFAUT_S;
   _fuseauMin   = FUSEAU_DEFAUT_MIN;
-  _envoiS      = ENVOI_DEFAUT_S;
+  _releveS     = RELEVE_DEFAUT_S;
 }
 
-bool Reglages::definirMessage(const String& texte) {
-  String t = texte;
+bool Reglages::definirNom(const String& nom) {
+  String t = nom;
   t.trim();
   if (t.length() == 0) return false;                       // champ vide : on ne touche à rien
-  if (t.length() > MESSAGE_LONGUEUR_MAX) t = t.substring(0, MESSAGE_LONGUEUR_MAX);
-  if (t == _message) return false;
-  _message = t;
-  _nvs.putString("msg", _message);
+  if (t.length() > NOM_LONGUEUR_MAX) t = t.substring(0, NOM_LONGUEUR_MAX);
+  if (t == _nom) return false;
+  _nom = t;
+  _nvs.putString("nom", _nom);
   return true;
+}
+
+bool Reglages::effacerNom() {
+  if (_nom.length() == 0) return false;
+  _nom = "";
+  _nvs.remove("nom");
+  return true;
+}
+
+uint32_t Reglages::prochainNumero() {
+  _numero++;
+  _nvs.putULong("numero", _numero);
+  return _numero;
 }
 
 bool Reglages::definirInactivite(uint32_t s) {
@@ -76,12 +89,12 @@ bool Reglages::definirFuseau(int16_t minutes) {
   return true;
 }
 
-bool Reglages::definirEnvoi(uint32_t s) {
+bool Reglages::definirReleve(uint32_t s) {
   if (s == 0) return false;
-  s = constrain(s, ENVOI_MIN_S, ENVOI_MAX_S);
-  if (s == _envoiS) return false;
-  _envoiS = s;
-  _nvs.putULong("envoi", s);
+  s = constrain(s, RELEVE_MIN_S, RELEVE_MAX_S);
+  if (s == _releveS) return false;
+  _releveS = s;
+  _nvs.putULong("releve", s);
   return true;
 }
 

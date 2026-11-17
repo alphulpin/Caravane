@@ -69,7 +69,8 @@ String Reseau::scanner() {
   return sortie;
 }
 
-int Reseau::envoyerSupabase(const String& url, const String& cle, const String& table, const String& ligneJson) {
+int Reseau::envoyerSupabase(const String& url, const String& cle, const String& table, const String& lignesJson,
+                            uint16_t nombre) {
   _dernier.tente = true;
   _dernier.quandMs = millis();
   if (!connecte()) { _dernier.code = -100; return _dernier.code; }   // -100 : Wi-Fi non connecté
@@ -78,15 +79,19 @@ int Reseau::envoyerSupabase(const String& url, const String& cle, const String& 
   client.setInsecure();
   HTTPClient http;
   http.setTimeout(8000);
-  if (!http.begin(client, url + "/rest/v1/" + table)) { _dernier.code = -101; return _dernier.code; }
+  if (!http.begin(client, url + "/rest/v1/" + table)) {
+    _dernier.code = -101;
+    return _dernier.code;
+  }
   http.addHeader("apikey", cle);
   http.addHeader("Authorization", "Bearer " + cle);
   http.addHeader("Content-Type", "application/json");
   http.addHeader("Prefer", "return=minimal");
-  int code = http.POST(ligneJson);
-  if (code != 201) Serial.printf("Supabase : HTTP %d %s\n", code, http.getString().c_str());
-  else Serial.println("Supabase : mesure enregistrée");
+  int code = http.POST(lignesJson);
+  if (code != 201 && code != 409) Serial.printf("Supabase : HTTP %d %s\n", code, http.getString().c_str());
+  else Serial.printf("Supabase : %u relevé(s) publié(s)\n", nombre);
   http.end();
   _dernier.code = code;
+  if (_dernier.ok()) _dernier.nombre = nombre;
   return code;
 }

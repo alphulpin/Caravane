@@ -18,10 +18,9 @@ public:
   static bool valide()      { return time(nullptr) > 1700000000; }
 
   // "2026-11-17T06:14:00Z" (UTC), pour Supabase
-  static String iso8601() {
-    time_t maintenant = time(nullptr);
+  static String iso8601(time_t instant) {
     struct tm u;
-    gmtime_r(&maintenant, &u);
+    gmtime_r(&instant, &u);
     char t[48];
     snprintf(t, sizeof(t), "%04d-%02d-%02dT%02d:%02d:%02dZ",
              u.tm_year + 1900, u.tm_mon + 1, u.tm_mday, u.tm_hour, u.tm_min, u.tm_sec);

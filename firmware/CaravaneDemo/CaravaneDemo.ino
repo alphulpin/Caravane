@@ -1,16 +1,16 @@
 // CaravaneDemo — firmware de la carte caravane, pour Heltec V2 (ESP32) et V3 (ESP32-S3)
 //
-//  1. La carte démarre (mise sous tension, fin de veille, bouton USER ou retour du secteur).
-//  2. Elle affiche le message d'accueil, la date-heure ("n/d" tant qu'elle n'a pas été
-//     réglée), la température, l'humidité et la pression (carte CJMCU-8128).
-//  3. Elle écoute le Bluetooth (BLE) : le téléphone règle le message, l'heure, les
-//     temporisations et, côté administration, le mode de communication, le Wi-Fi,
-//     Supabase et les broches. Un champ vide ne change rien.
+//  1. Démarrage (mise sous tension, bouton USER, retour du secteur) : l'écran affiche le nom
+//     de la carte (« Hello world » s'il n'est pas défini), « bonjour! » et le n° de série,
+//     la date-heure et les mesures (carte CJMCU-8128). Le Bluetooth (BLE) est à l'écoute.
+//  2. Réveil par la minuterie, sur batterie sans Wi-Fi : relevé, enregistrement, retour
+//     immédiat en veille (ni écran ni Bluetooth).
+//  3. Chaque relevé est gardé en flash avec une marque « publié » (1000 relevés au plus).
+//     En Wi-Fi, tous les relevés non publiés partent dans Supabase, par lots.
+//     En LoRa (à venir), seul le dernier relevé sera envoyé.
 //  4. Sur batterie sans Wi-Fi : veille profonde après 5 min sans activité, réveil 15 min après.
-//     Sur secteur ou en mode Wi-Fi : pas de veille, la qualité d'air (CCS811) reste chaude,
-//     l'écran s'éteint après 5 min sans activité (le bouton le rallume).
-//  5. En mode Wi-Fi : mise à l'heure par Internet et envoi des mesures dans Supabase
-//     à intervalle régulier (5 min par défaut).
+//     Sur secteur ou en Wi-Fi : pas de veille, relevé toutes les 15 min, qualité d'air (CCS811)
+//     maintenue chaude, écran éteint après 5 min sans activité (le bouton le rallume).
 //
 // Carte : voir Config.h (V3 : « Heltec WiFi LoRa 32(V3) » ; V2 : « Heltec WiFi Kit 32 »
 // avec le schéma de partition « Huge APP »).
@@ -21,11 +21,13 @@
 #include "Config.h"
 #include "Reglages.h"
 #include "Horloge.h"
+#include "Identite.h"
 #include "Ecran.h"
 #include "LiaisonBLE.h"
 #include "Batterie.h"
 #include "Environnement.h"
 #include "Reseau.h"
+#include "Releves.h"
 
 Reglages reglages;
 Ecran ecran;
@@ -33,17 +35,19 @@ LiaisonBLE ble;
 Batterie batterie;
 Environnement env;
 Reseau reseau;
+Releves releves;
 
+String idCarte;                   // n° de série (adresse MAC), ex. "34B7DA5C1E20"
+String devEui;                    // identifiant LoRaWAN (V3)
 uint16_t vbatMv = 0;              // dernière tension LiPo lue (V3)
 bool surSecteur = false;          // contact sec du relais 230 V fermé
 bool redemarrageRequis = false;   // broches modifiées : prises en compte au prochain démarrage
 uint8_t brocheSecteur = DEFAUT_SECTEUR;
-String idAppareil;                // "caravane-a1b2c3", d'après l'adresse MAC
 
 uint32_t derniereActiviteMs = 0;
 uint32_t dernierAffichageMs = 0;
-uint32_t dernierEnvoiMs = 0;
-bool envoiFait = false;
+uint32_t dernierReleveMs = 0;
+uint32_t dernierEssaiPublicationMs = 0;
 
 bool lireSecteur() { return digitalRead(brocheSecteur) == LOW; }
 bool capteurChaud() { return surSecteur || reglages.wifiActif(); }   // CCS811 actif en continu
@@ -51,7 +55,87 @@ bool peutDormir()   { return !surSecteur && !reglages.wifiActif(); } // veille p
 
 static float arrondi1(float v) { return roundf(v * 10.0f) / 10.0f; }
 
-// Mesures communes à l'état Bluetooth et à l'envoi Supabase
+// ---------- Relevés ----------
+
+void enregistrerReleve() {
+  env.lire();
+  vbatMv = batterie.lireMv();
+  const Mesures& m = env.mesures();
+  Releve r = {};
+  r.numero      = reglages.prochainNumero();
+  r.horodatage  = Horloge::valide() ? (uint32_t)Horloge::epoch() : 0;
+  r.temp_c10    = isnan(m.temperatureC) ? INT16_MIN : (int16_t)lroundf(m.temperatureC * 10);
+  r.hum_c10     = isnan(m.humiditePct) ? 0xFFFF : (uint16_t)lroundf(m.humiditePct * 10);
+  r.press_hpa10 = isnan(m.pressionHpa) ? 0xFFFF : (uint16_t)lroundf(m.pressionHpa * 10);
+  r.eco2_ppm    = m.eco2Ppm;
+  r.tvoc_ppb    = m.tvocPpb;
+  r.vbat_mv     = Batterie::disponible() ? vbatMv : 0;
+  r.drapeaux    = surSecteur ? Releve::SECTEUR : 0;
+  bool ok = releves.ajouter(r);
+  dernierReleveMs = millis();
+  Serial.printf("Relevé n°%lu %s (%u à publier)\n", (unsigned long)r.numero, ok ? "enregistré" : "NON enregistré",
+                releves.aPublier());
+}
+
+// Un relevé sous forme de ligne de la table Supabase (toutes les clés, null si absent)
+void ajouterLigne(JsonArray lignes, const Releve& r) {
+  JsonObject o = lignes.add<JsonObject>();
+  o["appareil"]  = idCarte;
+  if (reglages.nom().length()) o["nom"] = reglages.nom(); else o["nom"] = nullptr;
+  o["carte"]     = CARTE_NOM;
+  if (CARTE_LORA) o["dev_eui"] = devEui; else o["dev_eui"] = nullptr;
+  o["releve_id"] = r.numero;
+  o["source"]    = "wifi";
+  if (r.horodatage) o["mesure_le"] = Horloge::iso8601(r.horodatage); else o["mesure_le"] = nullptr;
+  o["secteur"]   = r.secteur();
+  if (r.vbat_mv) o["vbat_mv"] = r.vbat_mv; else o["vbat_mv"] = nullptr;
+  if (r.temp_c10 != INT16_MIN) o["temp_c"] = r.temp_c10 / 10.0f; else o["temp_c"] = nullptr;
+  if (r.hum_c10 != 0xFFFF) o["hum_pct"] = r.hum_c10 / 10.0f; else o["hum_pct"] = nullptr;
+  if (r.press_hpa10 != 0xFFFF) o["press_hpa"] = r.press_hpa10 / 10.0f; else o["press_hpa"] = nullptr;
+  if (r.eco2_ppm) { o["eco2_ppm"] = r.eco2_ppm; o["tvoc_ppb"] = r.tvoc_ppb; }
+  else { o["eco2_ppm"] = nullptr; o["tvoc_ppb"] = nullptr; }
+}
+
+// Envoie lot[debut .. debut+n-1] à Supabase ; renvoie le code HTTP
+int envoyerLot(const Releve* lot, size_t debut, size_t n) {
+  JsonDocument doc;
+  JsonArray lignes = doc.to<JsonArray>();
+  for (size_t i = debut; i < debut + n; i++) ajouterLigne(lignes, lot[i]);
+  String corps;
+  serializeJson(doc, corps);
+  return reseau.envoyerSupabase(reglages.sbUrl(), reglages.sbCle(), reglages.sbTable(), corps, n);
+}
+
+// Wi-Fi : publie les plus anciens relevés non publiés (un lot par appel)
+void publierWifi() {
+  static Releve lot[RELEVES_PAR_LOT];
+  static uint16_t index[RELEVES_PAR_LOT];
+  size_t n = releves.nonPublies(lot, index, RELEVES_PAR_LOT);
+  dernierEssaiPublicationMs = millis();
+  if (n == 0) return;
+  int code = envoyerLot(lot, 0, n);
+  if (reseau.dernierEnvoi().ok()) { releves.marquerPublies(index, n); return; }
+  if (code == 409) {
+    // Doublon : un relevé du lot est déjà dans Supabase (réponse perdue lors d'un envoi
+    // précédent). On renvoie un par un ; « déjà là » vaut publication.
+    size_t publies = 0;
+    for (size_t i = 0; i < n; i++) {
+      int c = envoyerLot(lot, i, 1);
+      if (reseau.dernierEnvoi().ok() || c == 409) { releves.marquerPublies(&index[i], 1); publies++; }
+      else break;
+    }
+    Serial.printf("Doublon : %u relevé(s) réglé(s) un par un\n", (unsigned)publies);
+    return;
+  }
+  Serial.printf("Publication échouée (%d), nouvel essai dans 1 min\n", code);
+}
+
+// LoRa : seul le dernier relevé sera envoyé (à venir, après réception des passerelles).
+// Il sera alors marqué publié ; les plus anciens restent à publier par le Wi-Fi.
+void publierLora() {}
+
+// ---------- État pour le téléphone ----------
+
 void ajouterMesures(JsonDocument& doc) {
   const Mesures& m = env.mesures();
   doc[CLE_SECTEUR] = surSecteur;
@@ -66,16 +150,18 @@ void ajouterMesures(JsonDocument& doc) {
 // et toutes les 10 s.
 String etatJson() {
   JsonDocument doc;
-  doc[CLE_MESSAGE]    = reglages.message();
+  doc[CLE_NOM]        = reglages.nom();
   doc[CLE_HEURE]      = Horloge::valide() ? (int64_t)Horloge::epoch() : 0;
   doc[CLE_FUSEAU]     = reglages.fuseauMin();
   doc[CLE_INACTIVITE] = reglages.inactiviteS();
   doc[CLE_VEILLE]     = reglages.veilleS();
+  doc[CLE_RELEVE]     = reglages.releveS();
   ajouterMesures(doc);
-  // Administration
+  // Identification et administration
   doc[CLE_CARTE]      = CARTE_NOM;
+  doc[CLE_ID]         = idCarte;
+  if (CARTE_LORA) doc[CLE_DEVEUI] = devEui;
   doc["lora_dispo"]   = CARTE_LORA;
-  doc["appareil"]     = idAppareil;
   doc[CLE_COMM]       = Reglages::nomComm(reglages.comm());
   doc[CLE_WIFI_SSID]  = reglages.wifiSsid();
   doc["wifi_mdp_def"] = reglages.wifiMdp().length() > 0;
@@ -84,12 +170,16 @@ String etatJson() {
   doc[CLE_SB_URL]     = reglages.sbUrl();
   doc[CLE_SB_TABLE]   = reglages.sbTable();
   doc["sb_cle_def"]   = reglages.sbCle().length() > 0;
-  doc[CLE_ENVOI]      = reglages.envoiS();
+  JsonObject j = doc["releves"].to<JsonObject>();
+  j["nombre"]    = releves.nombre();
+  j["a_publier"] = releves.aPublier();
+  j["capacite"]  = releves.capacite();
   const ResultatEnvoi& e = reseau.dernierEnvoi();
   if (e.tente) {
     JsonObject envoi = doc["dernier_envoi"].to<JsonObject>();
-    envoi["code"] = e.code;
-    envoi["age_s"] = (millis() - e.quandMs) / 1000;
+    envoi["code"]   = e.code;
+    envoi["nombre"] = e.nombre;
+    envoi["age_s"]  = (millis() - e.quandMs) / 1000;
   }
   JsonObject b = doc[CLE_BROCHES].to<JsonObject>();
   b["sda"] = reglages.capteursSda();
@@ -103,28 +193,6 @@ String etatJson() {
   String sortie;
   serializeJson(doc, sortie);
   return sortie;
-}
-
-// Une ligne de la table Supabase (voir supabase/caravane_mesures.sql)
-String ligneSupabase() {
-  JsonDocument doc;
-  doc["appareil"] = idAppareil;
-  doc["carte"] = CARTE_NOM;
-  doc["source"] = "wifi";
-  if (Horloge::valide()) doc["mesure_le"] = Horloge::iso8601();
-  ajouterMesures(doc);
-  String sortie;
-  serializeJson(doc, sortie);
-  return sortie;
-}
-
-void envoyerMesures() {
-  if (!reglages.supabasePret()) return;
-  env.lire();
-  vbatMv = batterie.lireMv();
-  reseau.envoyerSupabase(reglages.sbUrl(), reglages.sbCle(), reglages.sbTable(), ligneSupabase());
-  dernierEnvoiMs = millis();
-  envoiFait = true;
 }
 
 // Démarre ou coupe le Wi-Fi et la qualité d'air selon le mode de communication
@@ -143,10 +211,10 @@ void traiterCommande(const String& ligne) {
     return;
   }
   if (doc[CLE_DEFAUT] | false) reglages.reinitialiser();
-  reglages.definirMessage(doc[CLE_MESSAGE] | "");
+  reglages.definirNom(doc[CLE_NOM] | "");
   reglages.definirInactivite(doc[CLE_INACTIVITE] | 0UL);
   reglages.definirVeille(doc[CLE_VEILLE] | 0UL);
-  reglages.definirEnvoi(doc[CLE_ENVOI] | 0UL);
+  reglages.definirReleve(doc[CLE_RELEVE] | 0UL);
   if (doc[CLE_FUSEAU].is<int>()) reglages.definirFuseau(doc[CLE_FUSEAU].as<int>());
   Horloge::regler(doc[CLE_HEURE] | (int64_t)0);
 
@@ -154,7 +222,7 @@ void traiterCommande(const String& ligne) {
   bool commChange = reglages.definirComm(doc[CLE_COMM] | "");
   reglages.definirSupabase(doc[CLE_SB_URL] | "", doc[CLE_SB_CLE] | "", doc[CLE_SB_TABLE] | "");
   if (wifiChange && reglages.wifiActif()) reseau.arreter();      // reconnexion avec les nouveaux identifiants
-  if (wifiChange || commChange) { appliquerComm(); envoiFait = false; }
+  if (wifiChange || commChange) appliquerComm();
 
   JsonObject broches = doc[CLE_BROCHES];
   if (!broches.isNull()) {
@@ -165,7 +233,9 @@ void traiterCommande(const String& ligne) {
 
   const String cmd = doc[CLE_CMD] | "";
   if (cmd == "scan_wifi") ble.envoyerLigne(reseau.scanner());
-  else if (cmd == "envoyer") envoyerMesures();
+  else if (cmd == "releve") { enregistrerReleve(); dernierEssaiPublicationMs = 0; }
+  else if (cmd == "effacer_nom") reglages.effacerNom();
+  else if (cmd == "effacer_releves") releves.effacer();
 
   ble.envoyerLigne(etatJson());
 
@@ -175,8 +245,14 @@ void traiterCommande(const String& ligne) {
   }
 }
 
+// ---------- Écran ----------
+
 void rafraichirEcran() {
   const Mesures& m = env.mesures();
+
+  // Ligne 4 : alterne toutes les 3 s entre les mesures, la qualité d'air et les relevés en attente
+  String choix[3];
+  uint8_t n = 0;
   char lEnv[24] = "capteurs absents";
   if (!isnan(m.temperatureC) || !isnan(m.pressionHpa)) {
     char t[8] = "--", h[6] = "--", p[8] = "--";
@@ -185,16 +261,19 @@ void rafraichirEcran() {
     if (!isnan(m.pressionHpa))  snprintf(p, sizeof(p), "%.0fhPa", m.pressionHpa);
     snprintf(lEnv, sizeof(lEnv), "%s %s %s", t, h, p);
   }
-
-  // Ligne 2 : suite du message, ou qualité d'air quand le capteur est chaud
-  String msg = reglages.message();
-  String ligne1 = msg.substring(0, 21), ligne2 = msg.length() > 21 ? msg.substring(21) : "";
+  choix[n++] = lEnv;
   if (capteurChaud()) {
     char q[24];
     if (m.eco2Ppm) snprintf(q, sizeof(q), "CO2 %u COV %u", m.eco2Ppm, m.tvocPpb);
     else strlcpy(q, env.qualiteAirActive() ? "Air: chauffe..." : "Air: --", sizeof(q));
-    ligne2 = q;
+    choix[n++] = q;
   }
+  if (releves.aPublier()) {
+    char r[24];
+    snprintf(r, sizeof(r), "A publier: %u", releves.aPublier());
+    choix[n++] = r;
+  }
+  const String& ligne4 = choix[(millis() / 3000) % n];
 
   // Ligne d'état : Bluetooth, Wi-Fi, secteur ou décompte avant veille, LiPo
   String etat = ble.connecte() ? "BT" : "--";
@@ -208,8 +287,12 @@ void rafraichirEcran() {
     etat += d;
   }
   if (Batterie::disponible()) etat += " " + Batterie::texte(vbatMv);
-  ecran.afficher(ligne1, ligne2, Horloge::texte(reglages.fuseauMin()), lEnv, etat);
+
+  ecran.afficher(reglages.nomAffiche(), "bonjour! " + idCarte, Horloge::texte(reglages.fuseauMin()),
+                 ligne4, etat);
 }
+
+// ---------- Veille ----------
 
 void entrerEnVeille() {
   Serial.printf("Veille profonde pour %lu s\n", (unsigned long)reglages.veilleS());
@@ -232,6 +315,19 @@ void entrerEnVeille() {
   esp_deep_sleep_start();                            // au réveil : on repasse par setup()
 }
 
+// Réveil par la minuterie sur batterie : relevé, enregistrement, envoi LoRa, et on se rendort.
+void cycleRapide(uint8_t sda, uint8_t scl, bool busPartage) {
+  pinMode(BROCHE_VEXT, OUTPUT);
+  digitalWrite(BROCHE_VEXT, LOW);                    // alimente les capteurs (l'écran reste éteint)
+  delay(50);
+  env.demarrer(sda, scl, busPartage);
+  batterie.demarrer();
+  releves.demarrer();
+  enregistrerReleve();
+  if (reglages.loraActif()) publierLora();
+  entrerEnVeille();
+}
+
 // Bascule secteur / batterie (vérifiée chaque seconde)
 void suivreSecteur() {
   bool s = lireSecteur();
@@ -247,33 +343,38 @@ void reveillerEcran() {
   if (ecran.endormi()) { ecran.sommeil(false); rafraichirEcran(); }
 }
 
+// ---------- Programme ----------
+
 void setup() {
   Serial.begin(115200);
-  char id[20];
-  snprintf(id, sizeof(id), "caravane-%06llx", (unsigned long long)(ESP.getEfuseMac() >> 24) & 0xFFFFFF);
-  idAppareil = id;
+  idCarte = Identite::numeroSerie();
+  devEui = Identite::devEui();
+  esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
 
   pinMode(BROCHE_BOUTON, INPUT_PULLUP);
   pinMode(BROCHE_LED, OUTPUT);
   digitalWrite(BROCHE_LED, LOW);                     // LED éteinte hors connexion Bluetooth
   reglages.charger();
-  Serial.printf("Carte Heltec %s, %s\n", CARTE_NOM, idAppareil.c_str());
+  Serial.printf("Carte Heltec %s, n° %s, nom « %s »\n", CARTE_NOM, idCarte.c_str(), reglages.nomAffiche().c_str());
 
   brocheSecteur = reglages.secteur();
   if (rtc_gpio_is_valid_gpio((gpio_num_t)brocheSecteur)) rtc_gpio_deinit((gpio_num_t)brocheSecteur);
   pinMode(brocheSecteur, INPUT_PULLUP);
+  surSecteur = lireSecteur();
 
   uint8_t sda = reglages.capteursSda(), scl = reglages.capteursScl();
   bool busPartage = (sda == BROCHE_OLED_SDA && scl == BROCHE_OLED_SCL);
+
+  if (cause == ESP_SLEEP_WAKEUP_TIMER && peutDormir()) cycleRapide(sda, scl, busPartage);   // ne revient pas
+
   ecran.demarrer(busPartage);                        // allume Vext : écran et capteurs
   env.demarrer(sda, scl, busPartage);
   env.balayer();
   batterie.demarrer();
-  vbatMv = batterie.lireMv();
-  surSecteur = lireSecteur();
-  env.lire();
+  releves.demarrer();
   ble.demarrer(BLE_NOM_APPAREIL);
   appliquerComm();                                   // Wi-Fi et qualité d'air selon le mode
+  enregistrerReleve();                               // un relevé à chaque démarrage
   derniereActiviteMs = millis();
   rafraichirEcran();
   Serial.println(etatJson());
@@ -305,10 +406,17 @@ void loop() {
     rafraichirEcran();
   }
 
-  // Envoi Supabase : dès la connexion Wi-Fi, puis à la période réglée
-  if (reglages.wifiActif() && reseau.connecte() && reglages.supabasePret() &&
-      (!envoiFait || millis() - dernierEnvoiMs >= reglages.envoiS() * 1000UL)) {
-    envoyerMesures();
+  // Relevé périodique tant que la carte reste éveillée
+  if (millis() - dernierReleveMs >= reglages.releveS() * 1000UL) {
+    enregistrerReleve();
+    if (reglages.loraActif()) publierLora();
+  }
+
+  // Publication Wi-Fi des relevés en attente : lot suivant tout de suite si le précédent
+  // est passé, sinon nouvel essai au bout d'une minute.
+  if (reglages.wifiActif() && reseau.connecte() && reglages.supabasePret() && releves.aPublier()) {
+    uint32_t delai = reseau.dernierEnvoi().ok() ? 2000 : 60000;
+    if (dernierEssaiPublicationMs == 0 || millis() - dernierEssaiPublicationMs >= delai) publierWifi();
   }
 
   bool inactif = millis() - derniereActiviteMs >= reglages.inactiviteS() * 1000UL;

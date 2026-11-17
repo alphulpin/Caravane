@@ -12,6 +12,7 @@ struct ResultatEnvoi {
   bool     tente = false;   // au moins un envoi a été essayé
   int      code = 0;        // code HTTP (201 = inséré) ou erreur négative de HTTPClient
   uint32_t quandMs = 0;     // millis() du dernier essai
+  uint16_t nombre = 0;      // relevés publiés lors du dernier envoi réussi
   bool ok() const { return code == 201 || code == 200 || code == 204; }
 };
 
@@ -31,8 +32,10 @@ public:
   // Recherche des réseaux visibles (bloque 2 à 4 s) ; renvoie la ligne JSON {"wifi_reseaux":[...]}
   String scanner();
 
-  // Insère une ligne JSON dans la table Supabase. Renvoie le code HTTP.
-  int envoyerSupabase(const String& url, const String& cle, const String& table, const String& ligneJson);
+  // Insère un tableau JSON de relevés dans la table Supabase. Renvoie le code HTTP :
+  // 201 = inséré ; 409 = au moins un relevé y est déjà (clé appareil + releve_id), rien n'est inséré.
+  int envoyerSupabase(const String& url, const String& cle, const String& table, const String& lignesJson,
+                      uint16_t nombre);
 
   const ResultatEnvoi& dernierEnvoi() const { return _dernier; }
 

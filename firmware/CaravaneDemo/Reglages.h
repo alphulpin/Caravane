@@ -7,28 +7,33 @@
 class Reglages {
 public:
   void charger();                       // lit la flash, sinon valeurs par défaut de Config.h
-  void reinitialiser();                 // message et temporisations d'origine (garde Wi-Fi, Supabase, broches)
+  void reinitialiser();                 // temporisations d'origine (garde nom, Wi-Fi, Supabase, broches)
 
   // Chaque "definir" ignore une valeur vide/nulle et renvoie true si le réglage a changé.
-  bool definirMessage(const String& texte);
+  bool definirNom(const String& nom);
+  bool effacerNom();
   bool definirInactivite(uint32_t secondes);
   bool definirVeille(uint32_t secondes);
   bool definirFuseau(int16_t minutes);
-  bool definirEnvoi(uint32_t secondes);
+  bool definirReleve(uint32_t secondes);
   bool definirComm(const String& mode);  // "aucun", "wifi", "lora", "wifi_lora"
   bool definirWifi(const String& ssid, const String& mdp);
   bool definirSupabase(const String& url, const String& cle, const String& table);
   // Broches : -1 = défaut de la carte ; valeur absente = inchangée. Prises en compte au redémarrage.
   bool definirBroche(const char* nom, int valeur);
 
-  const String& message() const { return _message; }
-  uint32_t inactiviteS() const  { return _inactiviteS; }
-  uint32_t veilleS() const      { return _veilleS; }
-  int16_t fuseauMin() const     { return _fuseauMin; }
-  uint32_t envoiS() const       { return _envoiS; }
-  ModeComm comm() const         { return _comm; }
-  bool wifiActif() const        { return _comm == ModeComm::Wifi || _comm == ModeComm::WifiLora; }
-  bool loraActif() const        { return _comm == ModeComm::Lora || _comm == ModeComm::WifiLora; }
+  // Numéro du prochain relevé (croissant, conservé en flash : jamais réutilisé)
+  uint32_t prochainNumero();
+
+  const String& nom() const      { return _nom; }        // vide = pas de nom
+  String nomAffiche() const      { return _nom.length() ? _nom : String(NOM_DEFAUT); }
+  uint32_t inactiviteS() const   { return _inactiviteS; }
+  uint32_t veilleS() const       { return _veilleS; }
+  int16_t fuseauMin() const      { return _fuseauMin; }
+  uint32_t releveS() const       { return _releveS; }
+  ModeComm comm() const          { return _comm; }
+  bool wifiActif() const         { return _comm == ModeComm::Wifi || _comm == ModeComm::WifiLora; }
+  bool loraActif() const         { return _comm == ModeComm::Lora || _comm == ModeComm::WifiLora; }
   const String& wifiSsid() const { return _wifiSsid; }
   const String& wifiMdp() const  { return _wifiMdp; }
   const String& sbUrl() const    { return _sbUrl; }
@@ -44,8 +49,8 @@ public:
 
 private:
   Preferences _nvs;
-  String   _message;
-  uint32_t _inactiviteS = 0, _veilleS = 0, _envoiS = 0;
+  String   _nom;
+  uint32_t _inactiviteS = 0, _veilleS = 0, _releveS = 0, _numero = 0;
   int16_t  _fuseauMin = 0;
   ModeComm _comm = ModeComm::Aucun;
   String   _wifiSsid, _wifiMdp, _sbUrl, _sbCle, _sbTable;

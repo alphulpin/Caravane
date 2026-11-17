@@ -28,7 +28,8 @@ bool Environnement::lireRegs(uint8_t adr, uint8_t reg, uint8_t* data, size_t n) 
 // ---------- Démarrage ----------
 void Environnement::demarrer(uint8_t sda, uint8_t scl, bool partage) {
   if (partage) {
-    _bus = &Wire;                    // déjà démarré par l'écran, réglé à 100 kHz
+    _bus = &Wire;                    // bus de l'écran (sans effet s'il est déjà démarré)
+    _bus->begin(sda, scl, 100000);
   } else {
     _bus = &Wire1;
     _bus->begin(sda, scl, 100000);   // 100 kHz : le CCS811 étire l'horloge

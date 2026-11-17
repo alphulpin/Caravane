@@ -17,4 +17,5 @@ public:
 private:
   U8G2_SSD1306_128X64_NONAME_F_HW_I2C _oled;
   bool _endormi = false;
+  bool _demarre = false;
 };
