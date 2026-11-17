@@ -16,6 +16,7 @@ Domotique de caravane sur carte Heltec (ESP32) : surveillance de l'alimentation 
 | `docs/cablage.md` | Brochage des capteurs et du contact secteur, pour V2 et V3. |
 | `docs/grafana.md` | Visualisation des relevés dans Grafana Cloud, pas à pas. |
 | `docs/donnees.md` | Modèle de données et trame LoRa prévue. |
+| `docs/passerelle-ttn.md` | Mise en service de la passerelle Dragino LPS8N et de l’application TTN. |
 | `outils/gen_grafana.py` | Génère le tableau de bord Grafana. |
 
 À venir : décodeur de trames TTN et webhook vers Supabase (mode LoRa).
