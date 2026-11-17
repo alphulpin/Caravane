@@ -80,6 +80,7 @@ void daterRelevesSansHeure() {
 
 void enregistrerReleve() {
   env.lire();
+  Serial.println(env.diagnostic());
   vbatMv = batterie.lireMv();
   const Mesures& m = env.mesures();
   Releve r = {};
@@ -191,6 +192,7 @@ String etatJson() {
   doc[CLE_INACTIVITE] = reglages.inactiviteS();
   doc[CLE_VEILLE]     = reglages.veilleS();
   doc[CLE_RELEVE]     = reglages.releveS();
+  doc[CLE_TEMP_CORR]  = reglages.tempCorrC();
   ajouterMesures(doc);
   // Identification et administration
   doc[CLE_CARTE]      = CARTE_NOM;
@@ -258,6 +260,10 @@ void traiterCommande(const String& ligne) {
   reglages.definirInactivite(doc[CLE_INACTIVITE] | 0UL);
   reglages.definirVeille(doc[CLE_VEILLE] | 0UL);
   reglages.definirReleve(doc[CLE_RELEVE] | 0UL);
+  if (doc[CLE_TEMP_CORR].is<float>() && reglages.definirTempCorr(doc[CLE_TEMP_CORR].as<float>())) {
+    env.definirCorrection(reglages.tempCorrC());
+    env.lire();                                      // valeur corrigée tout de suite à l'écran et au téléphone
+  }
   if (doc[CLE_FUSEAU].is<int>()) reglages.definirFuseau(doc[CLE_FUSEAU].as<int>());
   Horloge::regler(doc[CLE_HEURE] | (int64_t)0);
 
@@ -364,6 +370,7 @@ void cycleRapide(uint8_t sda, uint8_t scl, bool busPartage) {
   digitalWrite(BROCHE_VEXT, LOW);                    // alimente les capteurs (l'écran reste éteint)
   delay(50);
   env.demarrer(sda, scl, busPartage);
+  env.definirCorrection(reglages.tempCorrC());
   batterie.demarrer();
   releves.demarrer();
   enregistrerReleve();
@@ -384,7 +391,12 @@ void suivreSecteur() {
 void reveillerEcran() {
   derniereActiviteMs = millis();
   if (!ble.actif()) ble.demarrer(BLE_NOM_APPAREIL);
-  if (ecran.endormi()) { ecran.sommeil(false); rafraichirEcran(); }
+  if (ecran.endormi()) {                             // mesure fraîche pour l'écran rallumé
+    vbatMv = batterie.lireMv();
+    env.lire();
+    ecran.sommeil(false);
+    rafraichirEcran();
+  }
 }
 
 // ---------- Programme ----------
@@ -413,6 +425,7 @@ void setup() {
 
   ecran.demarrer(busPartage);                        // allume Vext : écran et capteurs
   env.demarrer(sda, scl, busPartage);
+  env.definirCorrection(reglages.tempCorrC());
   env.balayer();
   batterie.demarrer();
   releves.demarrer();
@@ -448,12 +461,16 @@ void loop() {
     dernierAffichageMs = millis();
     suivreSecteur();
     static uint8_t compteur = 0;
-    if (++compteur >= 10) {                          // toutes les 10 s
+    // Mesures en direct toutes les 10 s seulement avec un téléphone connecté ; sinon les capteurs
+    // restent alimentés (CCS811 chaud) mais ne sont lus qu'aux relevés, et l'écran montre le dernier.
+    if (++compteur >= 10) {
       compteur = 0;
-      vbatMv = batterie.lireMv();
-      env.lire();
-      Serial.println(env.diagnostic());
-      if (ble.connecte()) ble.envoyerLigne(etatJson());
+      if (ble.connecte()) {
+        vbatMv = batterie.lireMv();
+        env.lire();
+        Serial.println(env.diagnostic());
+        ble.envoyerLigne(etatJson());
+      }
     }
     rafraichirEcran();
   }

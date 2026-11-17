@@ -22,6 +22,7 @@ Un champ absent, vide (`""`) ou nul (`0`) ne modifie rien. Les durées et l'heur
 | `tz_min` | nombre | décalage local en minutes (`-new Date().getTimezoneOffset()`) | 60 | −720 à 840 |
 | `inactivite_s` | nombre | inactivité avant veille profonde (ou avant extinction de l'écran si la carte reste éveillée) | 300 | 30 à 3600 |
 | `veille_s` | nombre | durée de la veille profonde | 900 | 60 à 86400 |
+| `temp_corr_c` | nombre | correction ajoutée à la température mesurée (étalonnage, pas de 0,1 °C) ; conservée par `defaut` | 0 | −10 à +10 |
 | `releve_s` | nombre | période des relevés quand la carte reste éveillée (secteur ou Wi-Fi) ; sur batterie, un relevé à chaque réveil | 900 | 60 à 86400 |
 | `defaut` | booléen | `true` = temporisations d'origine (nom, Wi-Fi, Supabase et broches conservés) | — | — |
 

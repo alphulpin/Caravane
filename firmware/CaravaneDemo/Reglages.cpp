@@ -18,6 +18,7 @@ void Reglages::charger() {
   _veilleS     = _nvs.getULong("veille", VEILLE_DEFAUT_S);
   _fuseauMin   = _nvs.getShort("tz", FUSEAU_DEFAUT_MIN);
   _releveS     = _nvs.getULong("releve", RELEVE_DEFAUT_S);
+  _tempCorr10  = _nvs.getShort("tcorr", 0);
   _numero      = _nvs.getULong("numero", 0);
   _comm        = (ModeComm)_nvs.getUChar("comm", (uint8_t)ModeComm::Aucun);
   _wifiSsid    = _nvs.getString("wssid", "");
@@ -90,6 +91,17 @@ bool Reglages::definirFuseau(int16_t minutes) {
   if (minutes < -720 || minutes > 840 || minutes == _fuseauMin) return false;
   _fuseauMin = minutes;
   _nvs.putShort("tz", minutes);
+  return true;
+}
+
+// Correction d'étalonnage : gardée par « valeurs par défaut » (comme les broches).
+bool Reglages::definirTempCorr(float c) {
+  if (isnan(c)) return false;
+  c = constrain(c, -TEMP_CORR_MAX_C, TEMP_CORR_MAX_C);
+  int16_t v = (int16_t)lroundf(c * 10.0f);
+  if (v == _tempCorr10) return false;
+  _tempCorr10 = v;
+  _nvs.putShort("tcorr", v);
   return true;
 }
 

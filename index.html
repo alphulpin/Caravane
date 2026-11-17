@@ -179,6 +179,11 @@ input[type=text]{font-family:var(--sans);font-weight:400}
           <div class="saisie"><input id="veille" type="number" inputmode="decimal" min="1" max="1440" step="1"><span>min</span></div>
           <small>Entre 1 et 1440 minutes.</small>
         </div>
+        <div class="champ">
+          <label for="tcorr">Correction de température</label>
+          <div class="saisie"><input id="tcorr" type="number" inputmode="decimal" min="-10" max="10" step="0.1"><span>°C</span></div>
+          <small>Ajoutée à la mesure (étalonnage), entre −10 et +10 °C. Ex. : −1,5 si la carte affiche 1,5 °C de trop.</small>
+        </div>
         <div class="rang">
           <button id="btnDefaut" type="button" disabled>Valeurs par défaut</button>
           <button class="principal" id="btnEcrire" type="submit" disabled>Enregistrer sur la carte</button>
@@ -339,6 +344,7 @@ function afficherEtatCarte(m){
   remplir("nom", m.nom);
   remplir("inact", m.inactivite_s);
   remplir("veille", m.veille_s != null ? +(m.veille_s / 60).toFixed(2) : null);
+  remplir("tcorr", m.temp_corr_c != null ? +m.temp_corr_c.toFixed(1) : null);
   const unite = (v, d, u) => v == null ? "--" : fr(v, d) + " <small>" + u + "</small>";
   $("temp").innerHTML  = unite(m.temp_c, 1, "°C");
   $("hum").innerHTML   = unite(m.hum_pct, 0, "%");
@@ -405,7 +411,7 @@ function recevoir(ligne){
   if (m.wifi_reseaux) return afficherReseaux(m.wifi_reseaux);   // réponse à la recherche Wi-Fi
   afficherEtatCarte(m);
   if (attente === "admin") for (const id of CHAMPS_ADMIN) delete $(id).dataset.modifie;
-  if (attente === "cfg" || attente === "defaut") for (const id of ["nom","inact","veille"]) delete $(id).dataset.modifie;
+  if (attente === "cfg" || attente === "defaut") for (const id of ["nom","inact","veille","tcorr"]) delete $(id).dataset.modifie;
   if (attente === "cfg") note("noteCfg", "Réglages enregistrés. Vérifiez les valeurs relues ci-dessus.", "ok");
   if (attente === "defaut") note("noteCfg", "Valeurs par défaut rétablies.", "ok");
   if (attente === "heure") note("noteHeure", "Horloge de la carte mise à l'heure.", "ok");
@@ -480,7 +486,7 @@ async function connecter(){
 
 /* ---------- Carte simulée ---------- */
 function carteSimulee(){
-  const defaut = {nom: "", tz_min: 60, inactivite_s: 300, veille_s: 900, releve_s: 900};
+  const defaut = {nom: "", tz_min: 60, inactivite_s: 300, veille_s: 900, releve_s: 900, temp_corr_c: 0};
   let c = {...defaut}, decalage = null;             // decalage nul = heure non réglée
   const a = {carte: "V3", lora_dispo: true, id_carte: "34B7DA5C1E20", dev_eui: "34B7DAFFFE5C1E20", comm: "aucun", wifi_ssid: "",
              wifi_mdp_def: false, wifi_etat: "inactif", sb_url: "", sb_table: "caravane_releves",
@@ -488,7 +494,7 @@ function carteSimulee(){
              broches_defaut: {sda: 41, scl: 42, secteur: 7}};
   const etat = () => ({...c, heure: decalage == null ? 0 : Math.round(Date.now() / 1000) + decalage,
                        vbat_mv: 3950 + Math.round(Math.random() * 40), secteur: false,
-                       temp_c: +(19 + Math.random()).toFixed(1), hum_pct: +(55 + Math.random() * 3).toFixed(1),
+                       temp_c: +(19 + c.temp_corr_c + Math.random()).toFixed(1), hum_pct: +(55 + Math.random() * 3).toFixed(1),
                        press_hpa: +(1013 + Math.random() * 2).toFixed(1), ...a});
   return {
     envoyer(texte){
@@ -497,7 +503,8 @@ function carteSimulee(){
       setTimeout(() => {
         if (!lien) return;
         if (!m) return recevoir('{"erreur":"json"}');
-        if (m.defaut === true) c = {...defaut, nom: c.nom};
+        if (m.defaut === true) c = {...defaut, nom: c.nom, temp_corr_c: c.temp_corr_c};
+        if (typeof m.temp_corr_c === "number") c.temp_corr_c = Math.max(-10, Math.min(10, m.temp_corr_c));
         if (m.nom) c.nom = String(m.nom).trim().slice(0, 21);
         if (m.cmd === "effacer_nom") c.nom = "";
         if (m.releve_s) c.releve_s = Math.min(86400, Math.max(60, m.releve_s));
@@ -555,6 +562,11 @@ $("formCfg").addEventListener("submit", ev => {
   if (!(inactivite_s >= 30 && inactivite_s <= 3600)) return note("noteCfg", "Inactivité : entre 30 et 3600 secondes.", "err");
   if (!(veille_s >= 60 && veille_s <= 86400)) return note("noteCfg", "Veille : entre 1 et 1440 minutes.", "err");
   const ordre = {inactivite_s, veille_s};
+  if ($("tcorr").value !== "") {
+    const corr = nombre("tcorr");
+    if (!(corr >= -10 && corr <= 10)) return note("noteCfg", "Correction de température : entre −10 et +10 °C.", "err");
+    ordre.temp_corr_c = Math.round(corr * 10) / 10;
+  }
   const nom = $("nom").value.trim();
   if (nom) ordre.nom = nom;
   note("noteCfg", "Envoi…");
@@ -603,7 +615,7 @@ $("btnBroches").addEventListener("click", () => {
 $("btnBrochesDefaut").addEventListener("click", () => envoyerBroches({sda: -1, scl: -1, secteur: -1}));
 $("btnRedem").addEventListener("click", () => { note("noteAdmin", "Redémarrage demandé."); envoyer({cmd: "redemarrer"}); });
 
-for (const id of ["nom","inact","veille", ...CHAMPS_ADMIN]) $(id).addEventListener("input", () => { $(id).dataset.modifie = "1"; });
+for (const id of ["nom","inact","veille","tcorr", ...CHAMPS_ADMIN]) $(id).addEventListener("input", () => { $(id).dataset.modifie = "1"; });
 if (!navigator.bluetooth) { $("avisNav").hidden = false; $("btnConn").hidden = true; }
 </script>
 </body>

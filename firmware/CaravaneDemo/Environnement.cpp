@@ -234,6 +234,7 @@ void Environnement::lireCcs() {
 
 void Environnement::lire() {
   lireHdc();
+  if (!isnan(_m.temperatureC)) _m.temperatureC += _corrC;   // avant la compensation du CCS811
   lireBmp();
   lireCcs();
 }

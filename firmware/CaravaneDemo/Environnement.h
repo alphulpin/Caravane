@@ -24,6 +24,7 @@ public:
   void demarrer(uint8_t sda, uint8_t scl, bool partage);
   void balayer();                           // liste les adresses I2C sur le port série
   void lire();                              // HDC1080 + BMP280 (+ CCS811 s'il tourne)
+  void definirCorrection(float c) { _corrC = c; }   // ajoutée à la température lue (étalonnage)
 
   // Qualité d'air : démarrée quand le capteur peut rester chaud (secteur ou Wi-Fi).
   void activerQualiteAir(bool actif);
@@ -49,6 +50,7 @@ private:
   Mesures _m;
   uint8_t _adrCcs = 0;
   bool _ccsActif = false;
+  float _corrC = 0;
   // Température/humidité à 0x40 : HDC1080 (prévu sur la CJMCU-8128) ou Si7021/HTU21D (même adresse)
   enum class TypeTH : uint8_t { Aucun, Hdc1080, Si7021 } _typeTH = TypeTH::Aucun;
   uint8_t _idTH[4] = {};             // identifiants lus au démarrage (diagnostic)
