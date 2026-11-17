@@ -88,6 +88,18 @@ int Reseau::envoyerSupabase(const String& url, const String& cle, const String& 
   http.addHeader("Content-Type", "application/json");
   http.addHeader("Prefer", "return=minimal");
   int code = http.POST(lignesJson);
+  if (code < 0) {
+    // Diagnostic : adresse résolue ? mémoire disponible pour le chiffrement ? erreur TLS ?
+    char erreur[100] = "";
+    client.lastError(erreur, sizeof(erreur));
+    IPAddress ip;
+    String hote = url;
+    hote.replace("https://", "");
+    bool dns = WiFi.hostByName(hote.c_str(), ip);
+    Serial.printf("Supabase : échec de connexion (%d) vers %s, DNS %s, TLS « %s », mémoire libre %u o (bloc max %u o)\n",
+                  code, hote.c_str(), dns ? ip.toString().c_str() : "ÉCHEC", erreur,
+                  (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
+  }
   if (code != 201 && code != 409) Serial.printf("Supabase : HTTP %d %s\n", code, http.getString().c_str());
   else Serial.printf("Supabase : %u relevé(s) publié(s)\n", nombre);
   http.end();

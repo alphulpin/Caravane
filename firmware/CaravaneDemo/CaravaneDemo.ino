@@ -189,6 +189,14 @@ String etatJson() {
   d["sda"] = DEFAUT_CAPTEURS_SDA;
   d["scl"] = DEFAUT_CAPTEURS_SCL;
   d["secteur"] = DEFAUT_SECTEUR;
+  JsonObject c = doc["capteurs"].to<JsonObject>();
+  c["temp_hum"] = env.nomTH();
+  c["bmp280"] = env.mesures().bmpOk;
+  c["ccs811"] = env.mesures().ccsOk;
+  JsonArray i2c = c["i2c"].to<JsonArray>();
+  const uint8_t* liste;
+  uint8_t nb = env.adresses(liste);
+  for (uint8_t i = 0; i < nb; i++) { char a[6]; snprintf(a, sizeof(a), "0x%02X", liste[i]); i2c.add(a); }
   if (redemarrageRequis) doc["redemarrage_requis"] = true;
   String sortie;
   serializeJson(doc, sortie);
@@ -401,6 +409,7 @@ void loop() {
       compteur = 0;
       vbatMv = batterie.lireMv();
       env.lire();
+      Serial.println(env.diagnostic());
       if (ble.connecte()) ble.envoyerLigne(etatJson());
     }
     rafraichirEcran();

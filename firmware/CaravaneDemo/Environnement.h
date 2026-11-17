@@ -30,6 +30,9 @@ public:
   bool qualiteAirActive() const { return _ccsActif; }
 
   const Mesures& mesures() const { return _m; }
+  const char* nomTH() const;          // "HDC1080", "Si7021" ou "absent"
+  String diagnostic() const;          // une ligne lisible pour le moniteur série
+  uint8_t adresses(const uint8_t*& liste) const { liste = _adresses; return _nbAdresses; }
 
 private:
   bool ecrire(uint8_t adr, uint8_t reg, const uint8_t* data, size_t n);
@@ -38,6 +41,7 @@ private:
 
   bool initBmp();
   void lireHdc();
+  void lireSi7021();
   void lireBmp();
   void lireCcs();
 
@@ -45,6 +49,12 @@ private:
   Mesures _m;
   uint8_t _adrCcs = 0;
   bool _ccsActif = false;
+  // Température/humidité à 0x40 : HDC1080 (prévu sur la CJMCU-8128) ou Si7021/HTU21D (même adresse)
+  enum class TypeTH : uint8_t { Aucun, Hdc1080, Si7021 } _typeTH = TypeTH::Aucun;
+  uint8_t _idTH[4] = {};             // identifiants lus au démarrage (diagnostic)
+  uint8_t _brutTH[4] = {};           // dernières valeurs brutes (diagnostic)
+  uint8_t _adresses[16] = {};        // adresses vues lors du balayage
+  uint8_t _nbAdresses = 0;
 
   // Coefficients d'étalonnage du BMP280
   uint16_t _T1 = 0, _P1 = 0;

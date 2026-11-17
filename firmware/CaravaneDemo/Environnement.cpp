@@ -25,6 +25,18 @@ bool Environnement::lireRegs(uint8_t adr, uint8_t reg, uint8_t* data, size_t n) 
   return true;
 }
 
+// HDC1080 : lecture d'un registre avec un STOP entre l'écriture du pointeur et la lecture
+// (il ne tolère pas toujours le « repeated start » utilisé pour les autres capteurs).
+static bool lireHdcRegistre(TwoWire* bus, uint8_t reg, uint8_t* data, size_t n, uint16_t attenteMs) {
+  bus->beginTransmission(ADR_HDC);
+  bus->write(reg);
+  if (bus->endTransmission(true) != 0) return false;
+  delay(attenteMs);
+  if (bus->requestFrom(ADR_HDC, (uint8_t)n) != n) return false;
+  for (size_t i = 0; i < n; i++) data[i] = bus->read();
+  return true;
+}
+
 // ---------- Démarrage ----------
 void Environnement::demarrer(uint8_t sda, uint8_t scl, bool partage) {
   if (partage) {
@@ -37,10 +49,29 @@ void Environnement::demarrer(uint8_t sda, uint8_t scl, bool partage) {
   _bus->setTimeOut(100);
   delay(20);                         // laisse les capteurs s'éveiller après Ve
 
-  // HDC1080 : identifiant fabricant 0x5449 ; mode température + humidité, 14 bits
-  uint8_t id[2];
-  _m.hdcOk = lireRegs(ADR_HDC, 0xFE, id, 2) && id[0] == 0x54 && id[1] == 0x49;
-  if (_m.hdcOk) { const uint8_t cfg[2] = { 0x10, 0x00 }; ecrire(ADR_HDC, 0x02, cfg, 2); }
+  // Température/humidité à 0x40. La CJMCU-8128 est censée porter un HDC1080, mais certains
+  // modules ont un Si7021/HTU21D à la même adresse, avec d'autres commandes : on teste les deux.
+  _typeTH = TypeTH::Aucun;
+  uint8_t id[2] = {}, dev[2] = {};
+  bool fab = lireHdcRegistre(_bus, 0xFE, id, 2, 2);
+  bool comp = lireHdcRegistre(_bus, 0xFF, dev, 2, 2);
+  _idTH[0] = id[0]; _idTH[1] = id[1]; _idTH[2] = dev[0]; _idTH[3] = dev[1];
+  if ((fab && id[0] == 0x54 && id[1] == 0x49) || (comp && dev[0] == 0x10 && dev[1] == 0x50)) {
+    _typeTH = TypeTH::Hdc1080;
+    const uint8_t cfg[2] = { 0x10, 0x00 };   // température + humidité à la suite, 14 bits
+    ecrire(ADR_HDC, 0x02, cfg, 2);
+    delay(2);
+  } else if (present(ADR_HDC)) {
+    // Si7021/HTU21D : 0xFE (lu plus haut) est sa commande de réinitialisation ; on attend
+    // puis on lit son registre utilisateur (0xE7).
+    delay(20);
+    uint8_t ur = 0;
+    if (lireHdcRegistre(_bus, 0xE7, &ur, 1, 1)) {
+      _typeTH = TypeTH::Si7021;
+      _idTH[3] = ur;
+    }
+  }
+  _m.hdcOk = _typeTH != TypeTH::Aucun;
 
   _m.bmpOk = initBmp();
 
@@ -53,33 +84,64 @@ void Environnement::demarrer(uint8_t sda, uint8_t scl, bool partage) {
   _m.ccsOk = _adrCcs != 0;
   _ccsActif = false;
 
-  Serial.printf("Capteurs : HDC1080 %s, BMP280 %s, CCS811 %s\n",
-                _m.hdcOk ? "ok" : "absent", _m.bmpOk ? "ok" : "absent",
+  Serial.printf("Capteurs : temp./hum. %s (id %02X%02X/%02X%02X), BMP280 %s, CCS811 %s\n",
+                nomTH(), _idTH[0], _idTH[1], _idTH[2], _idTH[3], _m.bmpOk ? "ok" : "absent",
                 _m.ccsOk ? (_adrCcs == 0x5A ? "ok (0x5A)" : "ok (0x5B)") : "absent");
 }
 
 void Environnement::balayer() {
   Serial.printf("Balayage I2C (%s) :", _bus == &Wire ? "Wire, partagé avec l'écran" : "Wire1");
-  uint8_t n = 0;
+  _nbAdresses = 0;
   for (uint8_t adr = 1; adr < 127; adr++) {
-    if (present(adr)) { Serial.printf(" 0x%02X", adr); n++; }
+    if (!present(adr)) continue;
+    Serial.printf(" 0x%02X", adr);
+    if (_nbAdresses < sizeof(_adresses)) _adresses[_nbAdresses++] = adr;
   }
-  Serial.println(n ? "" : " aucun périphérique");
+  Serial.println(_nbAdresses ? "" : " aucun périphérique");
+}
+
+const char* Environnement::nomTH() const {
+  switch (_typeTH) {
+    case TypeTH::Hdc1080: return "HDC1080";
+    case TypeTH::Si7021:  return "Si7021";
+    default:              return "absent";
+  }
+}
+
+String Environnement::diagnostic() const {
+  char t[96];
+  snprintf(t, sizeof(t), "Temp./hum. : %s, id %02X%02X/%02X%02X, brut %02X%02X %02X%02X -> %.1f C %.0f %%",
+           nomTH(), _idTH[0], _idTH[1], _idTH[2], _idTH[3], _brutTH[0], _brutTH[1], _brutTH[2], _brutTH[3],
+           _m.temperatureC, _m.humiditePct);
+  return t;
 }
 
 // ---------- HDC1080 ----------
 void Environnement::lireHdc() {
-  if (!_m.hdcOk) return;
-  _bus->beginTransmission(ADR_HDC);
-  _bus->write(0x00);                  // déclenche température puis humidité
-  if (_bus->endTransmission() != 0) return;
-  delay(20);
-  uint8_t b[4];
-  if (_bus->requestFrom(ADR_HDC, (uint8_t)4) != 4) return;
-  for (uint8_t i = 0; i < 4; i++) b[i] = _bus->read();
+  if (_typeTH == TypeTH::Si7021) { lireSi7021(); return; }
+  if (_typeTH != TypeTH::Hdc1080) return;
+  uint8_t b[4];                       // pointeur 0x00 : déclenche température puis humidité
+  if (!lireHdcRegistre(_bus, 0x00, b, 4, 20)) {
+    Serial.println("HDC1080 : lecture impossible");
+    return;
+  }
+  memcpy(_brutTH, b, 4);
   uint16_t rt = (b[0] << 8) | b[1], rh = (b[2] << 8) | b[3];
   _m.temperatureC = rt / 65536.0f * 165.0f - 40.0f;
   _m.humiditePct  = rh / 65536.0f * 100.0f;
+}
+
+// ---------- Si7021 / HTU21D ----------
+void Environnement::lireSi7021() {
+  uint8_t t[3], h[3];                 // commandes « sans maintien » : 0xF3 température, 0xF5 humidité
+  if (!lireHdcRegistre(_bus, 0xF3, t, 3, 60) || !lireHdcRegistre(_bus, 0xF5, h, 3, 30)) {
+    Serial.println("Si7021 : lecture impossible");
+    return;
+  }
+  _brutTH[0] = t[0]; _brutTH[1] = t[1]; _brutTH[2] = h[0]; _brutTH[3] = h[1];
+  uint16_t rt = ((t[0] << 8) | t[1]) & 0xFFFC, rh = ((h[0] << 8) | h[1]) & 0xFFFC;
+  _m.temperatureC = -46.85f + 175.72f * rt / 65536.0f;
+  _m.humiditePct  = constrain(-6.0f + 125.0f * rh / 65536.0f, 0.0f, 100.0f);
 }
 
 // ---------- BMP280 ----------
