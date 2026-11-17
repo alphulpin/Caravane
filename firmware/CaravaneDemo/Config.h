@@ -62,7 +62,7 @@ constexpr uint32_t VEILLE_MIN_S     = 60,  VEILLE_MAX_S     = 86400;
 constexpr uint32_t RELEVE_MIN_S     = 60,  RELEVE_MAX_S     = 86400;
 constexpr size_t   NOM_LONGUEUR_MAX = 21;          // une ligne d'écran
 constexpr uint16_t RELEVES_CAPACITE = 1000;        // relevés gardés en flash (≈10 jours à 4 par heure)
-constexpr uint8_t  RELEVES_PAR_LOT  = 20;          // relevés par envoi Supabase
+constexpr uint8_t  RELEVES_PAR_LOT  = 10;          // relevés par envoi Supabase
 
 // Modes de communication
 enum class ModeComm : uint8_t { Aucun = 0, Wifi = 1, Lora = 2, WifiLora = 3 };

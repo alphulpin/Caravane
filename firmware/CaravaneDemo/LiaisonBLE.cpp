@@ -9,7 +9,11 @@ static const size_t TAMPON_MAX = 1024;   // une ligne de réglage Supabase peut 
 static const size_t TAILLE_NOTIFICATION = 20;   // sûr quel que soit le MTU négocié
 
 void LiaisonBLE::demarrer(const char* nom) {
-  _verrou = xSemaphoreCreateMutex();
+  if (_actif) return;
+  if (_verrou == nullptr) _verrou = xSemaphoreCreateMutex();
+  _connecte = false;
+  _nouvelle = false;
+  _relancerAnnonce = false;
   BLEDevice::init(nom);
   _serveur = BLEDevice::createServer();
   _serveur->setCallbacks(this);
@@ -28,6 +32,24 @@ void LiaisonBLE::demarrer(const char* nom) {
   annonce->addServiceUUID(BLE_UUID_SERVICE);    // permet le filtrage côté Web Bluetooth
   annonce->setScanResponse(true);
   BLEDevice::startAdvertising();
+  _actif = true;
+  Serial.printf("Bluetooth : actif (mémoire libre %u o)\n", (unsigned)ESP.getFreeHeap());
+}
+
+void LiaisonBLE::arreter() {
+  if (!_actif) return;
+  _actif = false;
+  _connecte = false;
+  _nouvelle = false;
+  _relancerAnnonce = false;
+  BLEDevice::deinit(false);           // false : on pourra le relancer
+  _serveur = nullptr;
+  _tx = nullptr;
+  xSemaphoreTake(_verrou, portMAX_DELAY);
+  _tampon = "";
+  xSemaphoreGive(_verrou);
+  Serial.printf("Bluetooth : arrêté (mémoire libre %u o, bloc max %u o)\n",
+                (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
 }
 
 void LiaisonBLE::onConnect(BLEServer*) {
@@ -53,6 +75,7 @@ void LiaisonBLE::onWrite(BLECharacteristic* c) {
 }
 
 bool LiaisonBLE::lireLigne(String& ligne) {
+  if (_verrou == nullptr) return false;
   bool trouve = false;
   xSemaphoreTake(_verrou, portMAX_DELAY);
   int fin = _tampon.indexOf('\n');
@@ -91,7 +114,7 @@ bool LiaisonBLE::nouvelleConnexion() {
 }
 
 void LiaisonBLE::entretenir() {
-  if (_relancerAnnonce) {
+  if (_actif && _relancerAnnonce) {
     _relancerAnnonce = false;
     delay(300);
     BLEDevice::startAdvertising();

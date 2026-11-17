@@ -10,7 +10,8 @@
 //     En LoRa (à venir), seul le dernier relevé sera envoyé.
 //  4. Sur batterie sans Wi-Fi : veille profonde après 5 min sans activité, réveil 15 min après.
 //     Sur secteur ou en Wi-Fi : pas de veille, relevé toutes les 15 min, qualité d'air (CCS811)
-//     maintenue chaude, écran éteint après 5 min sans activité (le bouton le rallume).
+//     maintenue chaude ; après 5 min sans activité, l'écran ET le Bluetooth s'éteignent
+//     (le bouton les rallume). Sur V2, couper le Bluetooth libère la mémoire du HTTPS.
 //
 // Carte : voir Config.h (V3 : « Heltec WiFi LoRa 32(V3) » ; V2 : « Heltec WiFi Kit 32 »
 // avec le schéma de partition « Huge APP »).
@@ -18,6 +19,7 @@
 
 #include <ArduinoJson.h>
 #include "driver/rtc_io.h"
+#include "esp_bt.h"
 #include "Config.h"
 #include "Reglages.h"
 #include "Horloge.h"
@@ -94,6 +96,16 @@ void ajouterLigne(JsonArray lignes, const Releve& r) {
   if (r.press_hpa10 != 0xFFFF) o["press_hpa"] = r.press_hpa10 / 10.0f; else o["press_hpa"] = nullptr;
   if (r.eco2_ppm) { o["eco2_ppm"] = r.eco2_ppm; o["tvoc_ppb"] = r.tvoc_ppb; }
   else { o["eco2_ppm"] = nullptr; o["tvoc_ppb"] = nullptr; }
+}
+
+// Mémoire suffisante pour une connexion HTTPS ? Sur l'ESP32 (V2), Bluetooth + Wi-Fi + TLS ne
+// tiennent pas ensemble : on attend que le Bluetooth soit coupé. La V3 a assez de place.
+bool memoirePourHttps() {
+#if CONFIG_IDF_TARGET_ESP32
+  return !ble.actif();               // V2 : jamais Bluetooth et HTTPS en même temps
+#else
+  return true;                       // V3 : assez de mémoire pour les deux
+#endif
 }
 
 // Envoie lot[debut .. debut+n-1] à Supabase ; renvoie le code HTTP
@@ -284,7 +296,7 @@ void rafraichirEcran() {
   const String& ligne4 = choix[(millis() / 3000) % n];
 
   // Ligne d'état : Bluetooth, Wi-Fi, secteur ou décompte avant veille, LiPo
-  String etat = ble.connecte() ? "BT" : "--";
+  String etat = ble.connecte() ? "BT" : (ble.actif() ? "bt" : "--");
   if (reglages.wifiActif()) etat += reseau.connecte() ? " WiFi" : " WiFi?";
   if (surSecteur) etat += " 230V";
   else if (peutDormir()) {
@@ -348,6 +360,7 @@ void suivreSecteur() {
 
 void reveillerEcran() {
   derniereActiviteMs = millis();
+  if (!ble.actif()) ble.demarrer(BLE_NOM_APPAREIL);
   if (ecran.endormi()) { ecran.sommeil(false); rafraichirEcran(); }
 }
 
@@ -380,7 +393,14 @@ void setup() {
   env.balayer();
   batterie.demarrer();
   releves.demarrer();
+#if CONFIG_IDF_TARGET_ESP32
+  // ESP32 (V2) : on n'utilise que le BLE. Rendre la mémoire réservée au Bluetooth « classique »
+  // laisse assez de place au chiffrement HTTPS vers Supabase (sinon « Memory allocation failed »).
+  esp_bt_mem_release(ESP_BT_MODE_CLASSIC_BT);
+#endif
   ble.demarrer(BLE_NOM_APPAREIL);
+  Serial.printf("Mémoire libre après Bluetooth : %u o (bloc max %u o)\n",
+                (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
   appliquerComm();                                   // Wi-Fi et qualité d'air selon le mode
   enregistrerReleve();                               // un relevé à chaque démarrage
   derniereActiviteMs = millis();
@@ -393,7 +413,7 @@ void loop() {
   reseau.entretenir();
   digitalWrite(BROCHE_LED, ble.connecte() ? HIGH : LOW);
 
-  if (ble.activiteDepuisDernierAppel() || digitalRead(BROCHE_BOUTON) == LOW) reveillerEcran();
+  if (digitalRead(BROCHE_BOUTON) == LOW || (ble.actif() && ble.activiteDepuisDernierAppel())) reveillerEcran();
 
   // À chaque connexion, on pousse l'état courant (le téléphone peut aussi le demander avec "{}").
   if (ble.nouvelleConnexion()) { delay(1000); ble.envoyerLigne(etatJson()); }
@@ -423,7 +443,8 @@ void loop() {
 
   // Publication Wi-Fi des relevés en attente : lot suivant tout de suite si le précédent
   // est passé, sinon nouvel essai au bout d'une minute.
-  if (reglages.wifiActif() && reseau.connecte() && reglages.supabasePret() && releves.aPublier()) {
+  if (reglages.wifiActif() && reseau.connecte() && reglages.supabasePret() && releves.aPublier() &&
+      memoirePourHttps()) {
     uint32_t delai = reseau.dernierEnvoi().ok() ? 2000 : 60000;
     if (dernierEssaiPublicationMs == 0 || millis() - dernierEssaiPublicationMs >= delai) publierWifi();
   }
@@ -431,7 +452,10 @@ void loop() {
   bool inactif = millis() - derniereActiviteMs >= reglages.inactiviteS() * 1000UL;
   if (inactif) {
     if (peutDormir()) entrerEnVeille();
-    else ecran.sommeil(true);                        // reste éveillée : on éteint seulement l'écran
+    else {                                           // reste éveillée : écran et Bluetooth coupés
+      ecran.sommeil(true);
+      ble.arreter();
+    }
   }
   delay(20);
 }

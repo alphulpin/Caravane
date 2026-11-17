@@ -77,8 +77,10 @@ int Reseau::envoyerSupabase(const String& url, const String& cle, const String& 
 
   WiFiClientSecure client;
   client.setInsecure();
+  client.setHandshakeTimeout(30);     // s : la poignée de main TLS est lente sur l'ESP32 (V2)
   HTTPClient http;
-  http.setTimeout(8000);
+  http.setConnectTimeout(15000);
+  http.setTimeout(20000);
   if (!http.begin(client, url + "/rest/v1/" + table)) {
     _dernier.code = -101;
     return _dernier.code;
@@ -87,7 +89,10 @@ int Reseau::envoyerSupabase(const String& url, const String& cle, const String& 
   http.addHeader("Authorization", "Bearer " + cle);
   http.addHeader("Content-Type", "application/json");
   http.addHeader("Prefer", "return=minimal");
+  uint32_t debut = millis();
   int code = http.POST(lignesJson);
+  Serial.printf("Supabase : réponse %d en %lu ms (%u octets envoyés)\n", code, (unsigned long)(millis() - debut),
+                (unsigned)lignesJson.length());
   if (code < 0) {
     // Diagnostic : adresse résolue ? mémoire disponible pour le chiffrement ? erreur TLS ?
     char erreur[100] = "";
@@ -96,9 +101,32 @@ int Reseau::envoyerSupabase(const String& url, const String& cle, const String& 
     String hote = url;
     hote.replace("https://", "");
     bool dns = WiFi.hostByName(hote.c_str(), ip);
+    // Test réseau brut : une simple connexion TCP (sans chiffrement) au port 443 de Supabase
+    // et au port 80 d'un site public dit si la carte sort vraiment sur Internet.
+    WiFiClient brut;
+    bool tcp443 = dns && brut.connect(ip, 443, 5000);
+    brut.stop();
+    bool tcp80 = brut.connect("example.com", 80, 5000);
+    brut.stop();
     Serial.printf("Supabase : échec de connexion (%d) vers %s, DNS %s, TLS « %s », mémoire libre %u o (bloc max %u o)\n",
                   code, hote.c_str(), dns ? ip.toString().c_str() : "ÉCHEC", erreur,
                   (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
+    // Poignée de main TLS seule, chronométrée
+    WiFiClientSecure tls;
+    tls.setInsecure();
+    tls.setHandshakeTimeout(30);
+    uint32_t t0 = millis();
+    bool tlsOk = tls.connect(hote.c_str(), 443);
+    uint32_t dureeTls = millis() - t0;
+    char errTls[100] = "";
+    if (!tlsOk) tls.lastError(errTls, sizeof(errTls));
+    tls.stop();
+    Serial.printf("Réseau : TLS seul %s en %lu ms %s, Wi-Fi %d dBm\n", tlsOk ? "OK" : "ÉCHEC",
+                  (unsigned long)dureeTls, errTls, WiFi.RSSI());
+    Serial.printf("Réseau : TCP %s:443 %s, TCP example.com:80 %s, heure Internet %s, passerelle %s, DNS %s\n",
+                  ip.toString().c_str(), tcp443 ? "OK" : "ÉCHEC", tcp80 ? "OK" : "ÉCHEC",
+                  time(nullptr) > 1700000000 ? "réglée" : "NON réglée",
+                  WiFi.gatewayIP().toString().c_str(), WiFi.dnsIP().toString().c_str());
   }
   if (code != 201 && code != 409) Serial.printf("Supabase : HTTP %d %s\n", code, http.getString().c_str());
   else Serial.printf("Supabase : %u relevé(s) publié(s)\n", nombre);

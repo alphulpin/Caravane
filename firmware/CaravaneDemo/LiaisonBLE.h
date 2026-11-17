@@ -9,7 +9,11 @@
 class LiaisonBLE : public BLEServerCallbacks, public BLECharacteristicCallbacks {
 public:
   void demarrer(const char* nom);
-  bool connecte() const { return _connecte; }
+  // Arrête le Bluetooth et rend sa mémoire (nécessaire sur ESP32/V2 pour le HTTPS) ;
+  // demarrer() le relance.
+  void arreter();
+  bool actif() const { return _actif; }
+  bool connecte() const { return _actif && _connecte; }
   bool lireLigne(String& ligne);      // true si une ligne complète ('\n') est arrivée
   void envoyerLigne(const String& ligne);
   bool activiteDepuisDernierAppel();  // connexion, déconnexion ou réception
@@ -29,4 +33,5 @@ private:
   volatile bool _activite = false;
   volatile bool _nouvelle = false;
   volatile bool _relancerAnnonce = false;
+  bool _actif = false;
 };
