@@ -173,10 +173,21 @@
         }
       ],
       "fieldConfig": {
-        "defaults": {
-          "unit": "dateTimeFromNow"
-        },
-        "overrides": []
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "dernier relevé"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeFromNow"
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "reduceOptions": {

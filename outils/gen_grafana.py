@@ -13,6 +13,13 @@ def panneau(typ, titre, x, y, w, h, cibles, defauts=None, opts=None, **autres):
     p = {"id": pid[0], "type": typ, "title": titre, "datasource": DS,
          "gridPos": {"x": x, "y": y, "w": w, "h": h}, "targets": cibles,
          "fieldConfig": {"defaults": defauts or {}, "overrides": []}, "options": opts or {}}
+    # Unité appliquée à une seule colonne : en défaut, elle s'appliquerait aussi au nom de la carte
+    # (colonne texte), que Grafana afficherait alors « NaN »
+    unite = autres.pop("unite_champ", None)
+    if unite:
+        p["fieldConfig"]["overrides"].append({
+            "matcher": {"id": "byName", "options": unite[0]},
+            "properties": [{"id": "unit", "value": unite[1]}]})
     if autres.pop("overrides_minmax", False):
         # minimum / maximum des tranches agrégées : trait fin pointillé, sans remplissage
         p["fieldConfig"]["overrides"].append({
@@ -48,9 +55,10 @@ panels = [
   panneau("stat", "Dernier relevé", 18, 0, 6, 5,
           [cible("select " + CARTE + " as carte, extract(epoch from max(" + T + ")) * 1000 as \"dernier relevé\"\n"
                  "from " + JOIN + "\nwhere r.appareil in ($carte)\ngroup by 1", "table")],
-          {"unit": "dateTimeFromNow"},
+          {},
           {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "/^dernier relevé$/", "values": True},
-           "colorMode": "none", "graphMode": "none", "textMode": "value_and_name"}),
+           "colorMode": "none", "graphMode": "none", "textMode": "value_and_name"},
+          unite_champ=("dernier relevé", "dateTimeFromNow")),
   # Une courbe par grandeur choisie (panneau répété), une série par carte
   # Résolution automatique selon la plage affichée : relevés bruts jusqu'à 7 jours, moyennes
   # horaires jusqu'à 90 jours, journalières au-delà (avec minimum et maximum en pointillés).
