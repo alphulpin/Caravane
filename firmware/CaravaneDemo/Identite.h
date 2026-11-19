@@ -1,3 +1,8 @@
+// ==== Caravane =======================================================================
+// Identite.h — firmware CaravaneDemo, version 0.9.0 — dernière modification : 2026-11-17
+// Auteur : Alexandre Phulpin (développement assisté par Claude)
+// Dépôt : https://github.com/alphulpin/Caravane
+// ====
 // Identite — numéros qui identifient la carte, sans rien avoir à régler.
 //
 // - N° de série : l'adresse MAC gravée en usine dans la puce (48 bits), unique au monde.

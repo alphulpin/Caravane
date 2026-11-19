@@ -1,3 +1,8 @@
+// ==== Caravane =======================================================================
+// Ecran.h — firmware CaravaneDemo, version 0.9.0 — dernière modification : 2026-11-17
+// Auteur : Alexandre Phulpin (développement assisté par Claude)
+// Dépôt : https://github.com/alphulpin/Caravane
+// ====
 // Ecran — OLED 128x64 intégré aux Heltec V2 et V3 (SSD1306, I2C), via la bibliothèque U8g2.
 #pragma once
 #include <Arduino.h>

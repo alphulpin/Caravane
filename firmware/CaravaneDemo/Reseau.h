@@ -1,3 +1,8 @@
+// ==== Caravane =======================================================================
+// Reseau.h — firmware CaravaneDemo, version 0.9.0 — dernière modification : 2026-11-17
+// Auteur : Alexandre Phulpin (développement assisté par Claude)
+// Dépôt : https://github.com/alphulpin/Caravane
+// ====
 // Reseau — Wi-Fi (connexion, recherche des réseaux, mise à l'heure NTP) et écriture
 // directe dans Supabase par l'API REST (PostgREST).
 //

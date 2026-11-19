@@ -1,3 +1,8 @@
+// ==== Caravane =======================================================================
+// Etalonnage.h — firmware CaravaneDemo, version 0.9.0 — dernière modification : 2026-11-17
+// Auteur : Alexandre Phulpin (développement assisté par Claude)
+// Dépôt : https://github.com/alphulpin/Caravane
+// ====
 // Etalonnage — correction linéaire de chaque grandeur mesurée : valeur = pente × brute + décalage.
 // Défaut : pente 1, décalage 0 (aucune correction). Réglé depuis le téléphone, gardé en flash.
 // Les relevés stockés et publiés sont les valeurs corrigées ; l'étalonnage en vigueur est publié

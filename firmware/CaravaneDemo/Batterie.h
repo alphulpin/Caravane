@@ -1,3 +1,8 @@
+// ==== Caravane =======================================================================
+// Batterie.h — firmware CaravaneDemo, version 0.9.0 — dernière modification : 2026-11-17
+// Auteur : Alexandre Phulpin (développement assisté par Claude)
+// Dépôt : https://github.com/alphulpin/Caravane
+// ====
 // Batterie — tension du connecteur LiPo de la carte.
 // V3 : pont diviseur intégré (390 kΩ / 100 kΩ, rapport 4,9) lu sur GPIO1, mis en service par GPIO37.
 // V2 : non géré (BROCHE_VBAT = -1 dans Config.h) : la mesure renvoie 0.

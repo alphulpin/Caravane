@@ -1,3 +1,8 @@
+// ==== Caravane =======================================================================
+// Horloge.h — firmware CaravaneDemo, version 0.9.0 — dernière modification : 2026-11-17
+// Auteur : Alexandre Phulpin (développement assisté par Claude)
+// Dépôt : https://github.com/alphulpin/Caravane
+// ====
 // Horloge — heure système de l'ESP32 (conservée pendant la veille profonde,
 // perdue à la coupure d'alimentation : elle redevient alors "n/d").
 #pragma once

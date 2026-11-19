@@ -1,3 +1,8 @@
+// ==== Caravane =======================================================================
+// LiaisonBLE.h — firmware CaravaneDemo, version 0.9.0 — dernière modification : 2026-11-17
+// Auteur : Alexandre Phulpin (développement assisté par Claude)
+// Dépôt : https://github.com/alphulpin/Caravane
+// ====
 // LiaisonBLE — périphérique BLE "Nordic UART" : lignes de texte dans les deux sens.
 // Les callbacks BLE tournent dans une autre tâche : ils ne font que déposer les
 // données, tout le traitement se fait dans loop() via lireLigne().

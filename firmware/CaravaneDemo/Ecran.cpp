@@ -1,3 +1,8 @@
+// ==== Caravane =======================================================================
+// Ecran.cpp — firmware CaravaneDemo, version 0.9.0 — dernière modification : 2026-11-17
+// Auteur : Alexandre Phulpin (développement assisté par Claude)
+// Dépôt : https://github.com/alphulpin/Caravane
+// ====
 #include "Ecran.h"
 #include "Config.h"
 

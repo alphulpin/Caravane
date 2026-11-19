@@ -1,3 +1,8 @@
+// ==== Caravane =======================================================================
+// CaravaneDemo.ino — firmware CaravaneDemo, version 0.9.0 — dernière modification : 2026-11-19
+// Auteur : Alexandre Phulpin (développement assisté par Claude)
+// Dépôt : https://github.com/alphulpin/Caravane
+// ====
 // CaravaneDemo — firmware de la carte caravane, pour Heltec V2 (ESP32) et V3 (ESP32-S3)
 //
 //  1. Démarrage (mise sous tension, bouton USER, retour du secteur) : l'écran affiche le nom
@@ -518,7 +523,7 @@ void setup() {
   pinMode(BROCHE_LED, OUTPUT);
   digitalWrite(BROCHE_LED, LOW);                     // LED éteinte hors connexion Bluetooth
   reglages.charger();
-  Serial.printf("Carte Heltec %s, n° %s, nom « %s »\n", CARTE_NOM, idCarte.c_str(), reglages.nomAffiche().c_str());
+  Serial.printf("CaravaneDemo %s — carte Heltec %s, n° %s, nom « %s »\n", FIRMWARE_VERSION, CARTE_NOM, idCarte.c_str(), reglages.nomAffiche().c_str());
 
   brocheSecteur = reglages.secteur();
   if (rtc_gpio_is_valid_gpio((gpio_num_t)brocheSecteur)) rtc_gpio_deinit((gpio_num_t)brocheSecteur);

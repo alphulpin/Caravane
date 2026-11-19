@@ -1,3 +1,8 @@
+// ==== Caravane =======================================================================
+// Reglages.h — firmware CaravaneDemo, version 0.9.0 — dernière modification : 2026-11-17
+// Auteur : Alexandre Phulpin (développement assisté par Claude)
+// Dépôt : https://github.com/alphulpin/Caravane
+// ====
 // Reglages — paramètres modifiables par le téléphone, conservés en mémoire flash (NVS).
 #pragma once
 #include <Arduino.h>
