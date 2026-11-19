@@ -49,7 +49,7 @@ panels = [
           [cible("select " + CARTE + " as carte, extract(epoch from max(" + T + ")) * 1000 as \"dernier relevé\"\n"
                  "from " + JOIN + "\nwhere r.appareil in ($carte)\ngroup by 1", "table")],
           {"unit": "dateTimeFromNow"},
-          {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": True},
+          {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "/^dernier relevé$/", "values": True},
            "colorMode": "none", "graphMode": "none", "textMode": "value_and_name"}),
   # Une courbe par grandeur choisie (panneau répété), une série par carte
   # Résolution automatique selon la plage affichée : relevés bruts jusqu'à 7 jours, moyennes
@@ -76,7 +76,6 @@ panels = [
                  "  cross join (values (''), (' · min'), (' · max')) m(suffixe)\n"
                  "  where a.periode = resolution.r\n"
                  "    and a.appareil in ($carte) and a.grandeur = '$grandeur' and $__timeFilter(a.debut)),\n"
-                 "-- un point vide après chaque interruption, pour que la courbe montre le trou\n"
                  "trous as (\n"
                  "  select p.time + interval '1 second' as time, p.metric, null::double precision as value\n"
                  "  from (select time, metric, lead(time) over (partition by metric order by time) as suivant from points) p,\n"

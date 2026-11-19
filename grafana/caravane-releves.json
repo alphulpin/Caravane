@@ -183,7 +183,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "/^dernier relevé$/",
           "values": true
         },
         "colorMode": "none",
@@ -215,7 +215,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "with plage as (select $__timeTo()::timestamptz - $__timeFrom()::timestamptz as d),\nresolution as (\n  select case when d <= interval '7 days' then 'brut'\n              when d <= interval '90 days' then 'heure' else 'jour' end as r,\n         case when d <= interval '7 days' then interval '1 hour'\n              when d <= interval '90 days' then interval '3 hours' else interval '2 days' end as trou\n  from plage),\npoints as (\n  select s.horodatage as time, s.nom as metric, s.valeur as value\n  from caravane_series s, resolution\n  where resolution.r = 'brut'\n    and s.appareil in ($carte) and s.grandeur = '$grandeur' and $__timeFilter(s.horodatage)\n  union all\n  select a.debut, coalesce(k.nom, a.appareil) || m.suffixe,\n         case m.suffixe when '' then a.moyenne when ' · min' then a.mini else a.maxi end\n  from caravane_agregats a\n  left join caravane_cartes k using (appareil)\n  cross join resolution\n  cross join (values (''), (' · min'), (' · max')) m(suffixe)\n  where a.periode = resolution.r\n    and a.appareil in ($carte) and a.grandeur = '$grandeur' and $__timeFilter(a.debut)),\n-- un point vide après chaque interruption, pour que la courbe montre le trou\ntrous as (\n  select p.time + interval '1 second' as time, p.metric, null::double precision as value\n  from (select time, metric, lead(time) over (partition by metric order by time) as suivant from points) p,\n       resolution\n  where p.suivant - p.time > resolution.trou)\nselect * from points\nunion all\nselect * from trous\norder by 1"
+          "rawSql": "with plage as (select $__timeTo()::timestamptz - $__timeFrom()::timestamptz as d),\nresolution as (\n  select case when d <= interval '7 days' then 'brut'\n              when d <= interval '90 days' then 'heure' else 'jour' end as r,\n         case when d <= interval '7 days' then interval '1 hour'\n              when d <= interval '90 days' then interval '3 hours' else interval '2 days' end as trou\n  from plage),\npoints as (\n  select s.horodatage as time, s.nom as metric, s.valeur as value\n  from caravane_series s, resolution\n  where resolution.r = 'brut'\n    and s.appareil in ($carte) and s.grandeur = '$grandeur' and $__timeFilter(s.horodatage)\n  union all\n  select a.debut, coalesce(k.nom, a.appareil) || m.suffixe,\n         case m.suffixe when '' then a.moyenne when ' · min' then a.mini else a.maxi end\n  from caravane_agregats a\n  left join caravane_cartes k using (appareil)\n  cross join resolution\n  cross join (values (''), (' · min'), (' · max')) m(suffixe)\n  where a.periode = resolution.r\n    and a.appareil in ($carte) and a.grandeur = '$grandeur' and $__timeFilter(a.debut)),\ntrous as (\n  select p.time + interval '1 second' as time, p.metric, null::double precision as value\n  from (select time, metric, lead(time) over (partition by metric order by time) as suivant from points) p,\n       resolution\n  where p.suivant - p.time > resolution.trou)\nselect * from points\nunion all\nselect * from trous\norder by 1"
         }
       ],
       "fieldConfig": {
