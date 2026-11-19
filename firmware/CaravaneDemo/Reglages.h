@@ -1,5 +1,5 @@
 // ==== Caravane =======================================================================
-// Reglages.h — firmware CaravaneDemo, version 0.9.1 — dernière modification : 2026-11-17
+// Reglages.h — firmware CaravaneDemo, version 0.9.2 — dernière modification : 2026-11-19
 // Auteur : Alexandre Phulpin (développement assisté par Claude)
 // Dépôt : https://github.com/alphulpin/Caravane
 // ====
@@ -22,6 +22,8 @@ public:
   bool definirVeille(uint32_t secondes);
   bool definirFuseau(int16_t minutes);
   bool definirReleve(uint32_t secondes);
+  bool journal() const           { return _journal; }   // journal série (gardé par « valeurs par défaut »)
+  bool definirJournal(bool actif);
   bool definirComm(const String& mode);  // "aucun", "wifi", "lora", "wifi_lora"
   bool definirWifi(const String& ssid, const String& mdp);
   bool definirSupabase(const String& url, const String& cle, const String& table);
@@ -58,6 +60,7 @@ public:
 private:
   Preferences _nvs;
   String   _nom;
+  bool _journal = true;
   uint32_t _inactiviteS = 0, _veilleS = 0, _releveS = 0, _numero = 0;
   int16_t  _fuseauMin = 0;
   Etalonnage _etal;

@@ -264,6 +264,11 @@ input[type=text]{font-family:var(--sans);font-weight:400}
       <div class="saisie"><input id="releve" type="number" inputmode="decimal" min="1" max="1440" step="1"><span>min</span></div>
       <small>Quand la carte reste éveillée (secteur ou Wi-Fi). Sur batterie, un relevé à chaque réveil.</small>
     </div>
+    <div class="champ">
+      <label for="journal">Journal série (débogage)</label>
+      <input id="journal" type="checkbox" checked disabled style="justify-self:end;width:24px;height:24px">
+      <small>Messages de suivi vers le moniteur série de l'IDE. À désactiver une fois la mise au point terminée ; appliqué immédiatement.</small>
+    </div>
     <div class="rang">
       <button id="btnEnvoiNow" type="button" disabled>Relevé maintenant</button>
       <button class="principal" id="btnAdmin" type="button" disabled>Enregistrer</button>
@@ -322,7 +327,7 @@ function note(id, texte, ton){ const n = $(id); n.textContent = texte; n.dataset
 function majEtat(etat, texte){
   const e = $("etat"); e.dataset.etat = etat; e.textContent = texte;
   const actif = etat === "ok" || etat === "demo";
-  for (const id of ["btnLire","btnEcrire","btnHeure","btnDefaut","btnScan","btnAdmin","btnEnvoiNow","btnBroches","btnBrochesDefaut","btnRedem","btnEffNom","btnEffRel","btnEtal","btnEtalDefaut"]) $(id).disabled = !actif;
+  for (const id of ["btnLire","btnEcrire","btnHeure","btnDefaut","btnScan","btnAdmin","btnEnvoiNow","btnBroches","btnBrochesDefaut","btnRedem","btnEffNom","btnEffRel","btnEtal","btnEtalDefaut","journal"]) $(id).disabled = !actif;
   $("btnConn").textContent = etat === "ok" ? "Déconnecter" : "Connecter la carte";
   $("btnConn").disabled = etat === "attente" || etat === "demo";
   $("btnDemo").textContent = etat === "demo" ? "Quitter la démonstration" : "Démonstration sans carte";
@@ -399,6 +404,7 @@ function afficherAdmin(m, remplir){
   remplir("sbTable", m.sb_table);
   $("sbCle").placeholder = m.sb_cle_def ? "définie — inchangée si vide" : "à renseigner";
   remplir("releve", m.releve_s != null ? +(m.releve_s / 60).toFixed(1) : null);
+  if (typeof m.journal === "boolean") $("journal").checked = m.journal;
   if (m.broches) {
     remplir("bSda", m.broches.sda); remplir("bScl", m.broches.scl); remplir("bSect", m.broches.secteur);
   }
@@ -439,6 +445,7 @@ function recevoir(ligne){
   if (attente === "heure") note("noteHeure", "Horloge de la carte mise à l'heure.", "ok");
   if (attente === "admin") note("noteAdmin", "Administration enregistrée.", "ok");
   if (attente === "envoi") note("noteAdmin", "Relevé enregistré ; publié dans la foulée si le Wi-Fi est actif.", "ok");
+  if (attente === "journal") note("noteAdmin", "Journal série " + ($("journal").checked ? "activé." : "désactivé."), "ok");
   if (attente === "effrel") note("noteAdmin", "Relevés effacés.", "ok");
   attente = "";
 }
@@ -508,7 +515,7 @@ async function connecter(){
 
 /* ---------- Carte simulée ---------- */
 function carteSimulee(){
-  const defaut = {nom: "", tz_min: 60, inactivite_s: 300, veille_s: 900, releve_s: 900};
+  const defaut = {nom: "", tz_min: 60, inactivite_s: 300, veille_s: 900, releve_s: 900, journal: true};
   const etal = {};
   for (const k of ["temp_c","hum_pct","press_hpa","eco2_ppm","tvoc_ppb","vbat_mv"]) etal[k] = {pente: 1, decalage: 0};
   const corr = (k, v) => +(etal[k].pente * v + etal[k].decalage).toFixed(1);
@@ -528,10 +535,11 @@ function carteSimulee(){
       setTimeout(() => {
         if (!lien) return;
         if (!m) return recevoir('{"erreur":"json"}');
-        if (m.defaut === true) c = {...defaut, nom: c.nom};
+        if (m.defaut === true) c = {...defaut, nom: c.nom, journal: c.journal};
         if (m.etalonnage) for (const k in m.etalonnage) if (etal[k]) Object.assign(etal[k], m.etalonnage[k]);
         if (m.nom) c.nom = String(m.nom).trim().slice(0, 21);
         if (m.cmd === "effacer_nom") c.nom = "";
+        if (typeof m.journal === "boolean") c.journal = m.journal;
         if (m.releve_s) c.releve_s = Math.min(86400, Math.max(60, m.releve_s));
         if (m.heure) decalage = 0;
         if (m.tz_min) c.tz_min = m.tz_min;
@@ -658,6 +666,10 @@ $("btnAdmin").addEventListener("click", () => {
   $("wifiMdp").value = ""; $("sbCle").value = "";
   note("noteAdmin", "Envoi…");
   envoyer(ordre, "admin");
+});
+$("journal").addEventListener("change", () => {
+  note("noteAdmin", "Envoi…");
+  envoyer({journal: $("journal").checked}, "journal");
 });
 $("btnEnvoiNow").addEventListener("click", () => { note("noteAdmin", "Relevé en cours…"); envoyer({cmd: "releve"}, "envoi"); });
 $("btnEffNom").addEventListener("click", () => { $("nom").value = ""; delete $("nom").dataset.modifie; note("noteCfg", "Envoi…"); envoyer({cmd: "effacer_nom"}, "cfg"); });

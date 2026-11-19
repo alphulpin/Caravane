@@ -1,5 +1,5 @@
 // ==== Caravane =======================================================================
-// Config.h — firmware CaravaneDemo, version 0.9.1 — dernière modification : 2026-11-19
+// Config.h — firmware CaravaneDemo, version 0.9.2 — dernière modification : 2026-11-19
 // Auteur : Alexandre Phulpin (développement assisté par Claude)
 // Dépôt : https://github.com/alphulpin/Caravane
 // ====
@@ -57,7 +57,7 @@ constexpr uint8_t BROCHE_BOUTON = 0;     // bouton USER/PRG, actif à l'état ba
 #define NOM_DEFAUT "Hello world"          // affiché tant que la carte n'a pas de nom
 #define SB_TABLE_DEFAUT "caravane_releves"
 #define SB_TABLE_CONFIG "caravane_config"   // configuration publiée au démarrage, à chaque changement et chaque jour
-#define FIRMWARE_VERSION "0.9.1"
+#define FIRMWARE_VERSION "0.9.2"
 constexpr uint32_t CONFIG_PERIODE_S = 24UL * 3600;  // battement de cœur de la configuration
 constexpr uint32_t INACTIVITE_DEFAUT_S = 5 * 60;   // avant mise en veille profonde
 constexpr uint32_t VEILLE_DEFAUT_S     = 15 * 60;  // durée de la veille profonde
@@ -89,6 +89,7 @@ enum class ModeComm : uint8_t { Aucun = 0, Wifi = 1, Lora = 2, WifiLora = 3 };
 #define CLE_FUSEAU     "tz_min"        // décalage local en minutes (= -getTimezoneOffset() en JS)
 #define CLE_INACTIVITE "inactivite_s"  // délai d'inactivité avant veille, en secondes
 #define CLE_VEILLE     "veille_s"      // durée de veille profonde, en secondes
+#define CLE_JOURNAL    "journal"       // true/false : messages de suivi sur le port série (défaut true)
 #define CLE_ETALONNAGE "etalonnage"    // {"temp_c":{"pente":1,"decalage":-1.5},...} : valeur = pente × brute + décalage
 #define CLE_RELEVE     "releve_s"      // période des relevés quand la carte reste éveillée, en secondes
 #define CLE_DEFAUT     "defaut"        // true = temporisations d'origine (nom, Wi-Fi, Supabase, broches conservés)

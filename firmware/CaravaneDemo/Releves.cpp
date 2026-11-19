@@ -1,9 +1,10 @@
 // ==== Caravane =======================================================================
-// Releves.cpp — firmware CaravaneDemo, version 0.9.1 — dernière modification : 2026-11-17
+// Releves.cpp — firmware CaravaneDemo, version 0.9.2 — dernière modification : 2026-11-19
 // Auteur : Alexandre Phulpin (développement assisté par Claude)
 // Dépôt : https://github.com/alphulpin/Caravane
 // ====
 #include "Releves.h"
+#include "Journal.h"
 #include <LittleFS.h>
 
 static const char*    CHEMIN = "/releves.bin";
@@ -37,13 +38,13 @@ bool Releves::creer() {
   uint8_t zeros[sizeof(Releve) * 10] = {};
   for (uint16_t i = 0; i < RELEVES_CAPACITE; i += 10) f.write(zeros, sizeof(zeros));
   f.close();
-  Serial.printf("Relevés : journal créé (%u emplacements)\n", RELEVES_CAPACITE);
+  journalf("Relevés : journal créé (%u emplacements)\n", RELEVES_CAPACITE);
   return true;
 }
 
 bool Releves::demarrer() {
   // Partition « spiffs » des deux cartes ; formatée au premier démarrage si besoin.
-  if (!LittleFS.begin(true)) { Serial.println("Relevés : LittleFS indisponible"); return _pret = false; }
+  if (!LittleFS.begin(true)) { journalln("Relevés : LittleFS indisponible"); return _pret = false; }
   File f = LittleFS.open(CHEMIN, "r");
   Entete e = {};
   bool valide = f && f.read((uint8_t*)&e, sizeof(e)) == sizeof(e) && e.magique == MAGIQUE &&
@@ -63,7 +64,7 @@ bool Releves::demarrer() {
     if (f.read((uint8_t*)&r, sizeof(r)) == sizeof(r) && !r.publie()) _aPublier++;
   }
   f.close();
-  Serial.printf("Relevés : %u en mémoire, %u à publier\n", _nombre, _aPublier);
+  journalf("Relevés : %u en mémoire, %u à publier\n", _nombre, _aPublier);
   return _pret = true;
 }
 
@@ -156,5 +157,5 @@ void Releves::effacer() {
   _debut = _nombre = _aPublier = 0;
   ecrireEntete(f);
   f.close();
-  Serial.println("Relevés : journal vidé");
+  journalln("Relevés : journal vidé");
 }

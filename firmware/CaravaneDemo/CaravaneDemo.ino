@@ -1,5 +1,5 @@
 // ==== Caravane =======================================================================
-// CaravaneDemo.ino — firmware CaravaneDemo, version 0.9.1 — dernière modification : 2026-11-19
+// CaravaneDemo.ino — firmware CaravaneDemo, version 0.9.2 — dernière modification : 2026-11-19
 // Auteur : Alexandre Phulpin (développement assisté par Claude)
 // Dépôt : https://github.com/alphulpin/Caravane
 // ====
@@ -26,6 +26,7 @@
 #include "driver/rtc_io.h"
 #include "esp_bt.h"
 #include "Config.h"
+#include "Journal.h"
 #include "Reglages.h"
 #include "Horloge.h"
 #include "Identite.h"
@@ -85,14 +86,14 @@ void daterRelevesSansHeure() {
   for (uint8_t i = 0; i < nbSansHeure; i++) {
     uint32_t h = maintenant - (millis() - sansHeure[i].ms) / 1000;
     bool ok = releves.dater(sansHeure[i].index, h);
-    Serial.printf("Relevé (emplacement %u) daté après coup : %s\n", sansHeure[i].index, ok ? Horloge::iso8601(h).c_str() : "échec");
+    journalf("Relevé (emplacement %u) daté après coup : %s\n", sansHeure[i].index, ok ? Horloge::iso8601(h).c_str() : "échec");
   }
   nbSansHeure = 0;
 }
 
 void enregistrerReleve() {
   env.lire();
-  Serial.println(env.diagnostic());
+  journalln(env.diagnostic());
   vbatMv = lireVbat();
   const Mesures& m = env.mesures();
   Releve r = {};
@@ -109,7 +110,7 @@ void enregistrerReleve() {
   bool ok = releves.ajouter(r, &index);
   dernierReleveMs = millis();
   if (ok && !r.horodatage && nbSansHeure < 16) sansHeure[nbSansHeure++] = { index, dernierReleveMs };
-  Serial.printf("Relevé n°%lu %s (%u à publier)\n", (unsigned long)r.numero, ok ? "enregistré" : "NON enregistré",
+  journalf("Relevé n°%lu %s (%u à publier)\n", (unsigned long)r.numero, ok ? "enregistré" : "NON enregistré",
                 releves.aPublier());
 }
 
@@ -177,10 +178,10 @@ void publierWifi() {
       if (reseau.dernierEnvoi().ok() || c == 409) { releves.marquerPublies(&index[i], 1); publies++; }
       else break;
     }
-    Serial.printf("Doublon : %u relevé(s) réglé(s) un par un\n", (unsigned)publies);
+    journalf("Doublon : %u relevé(s) réglé(s) un par un\n", (unsigned)publies);
     return;
   }
-  Serial.printf("Publication échouée (%d), nouvel essai dans %lu s\n", code, (unsigned long)(delaiNouvelEssai() / 1000));
+  journalf("Publication échouée (%d), nouvel essai dans %lu s\n", code, (unsigned long)(delaiNouvelEssai() / 1000));
 }
 
 // LoRa : seul le dernier relevé sera envoyé (à venir, après réception des passerelles).
@@ -211,6 +212,7 @@ void remplirConfig(JsonObject c) {
   c["inactivite_s"] = reglages.inactiviteS();
   c["veille_s"]     = reglages.veilleS();
   c["tz_min"]       = reglages.fuseauMin();
+  c["journal"]      = reglages.journal();
   ajouterEtalonnage(c["etalonnage"].to<JsonObject>());
   JsonObject cap = c["capteurs"].to<JsonObject>();
   cap["temp_hum"] = env.nomTH();
@@ -240,7 +242,7 @@ void configAPublier(const char* evenement) {
   if (configEvenement == "demarrage" && strcmp(evenement, "demarrage") != 0) return;
   configEvenement = evenement;
   nvsConfig.putString("evt", configEvenement);
-  Serial.printf("Configuration à publier (%s)\n", evenement);
+  journalf("Configuration à publier (%s)\n", evenement);
 }
 
 const char* causeRedemarrage() {
@@ -273,7 +275,7 @@ void publierConfig() {
   reseau.envoyerSupabase(reglages.sbUrl(), reglages.sbCle(), SB_TABLE_CONFIG, corps, 1);
   compterEnvoi();
   if (!reseau.dernierEnvoi().ok()) return;
-  Serial.printf("Configuration publiée (%s)\n", configEvenement.c_str());
+  journalf("Configuration publiée (%s)\n", configEvenement.c_str());
   configEvenement = "";
   nvsConfig.remove("evt");
   derniereConfigMs = millis();
@@ -301,6 +303,7 @@ String etatJson() {
   doc[CLE_INACTIVITE] = reglages.inactiviteS();
   doc[CLE_VEILLE]     = reglages.veilleS();
   doc[CLE_RELEVE]     = reglages.releveS();
+  doc[CLE_JOURNAL] = reglages.journal();
   ajouterEtalonnage(doc[CLE_ETALONNAGE].to<JsonObject>());
   ajouterMesures(doc);
   // Identification et administration
@@ -371,6 +374,11 @@ void traiterCommande(const String& ligne) {
   reglages.definirVeille(doc[CLE_VEILLE] | 0UL);
   reglages.definirReleve(doc[CLE_RELEVE] | 0UL);
   // Étalonnage : {"temp_c":{"pente":1.02,"decalage":-1.5}} ; un champ absent garde sa valeur
+  if (doc[CLE_JOURNAL].is<bool>() && reglages.definirJournal(doc[CLE_JOURNAL].as<bool>())) {
+    journalActif() = true;                           // on annonce le changement dans tous les cas
+    journalf("Journal série %s\n", reglages.journal() ? "activé" : "désactivé");
+    journalActif() = reglages.journal();
+  }
   JsonObject etal = doc[CLE_ETALONNAGE];
   bool etalChange = false;
   for (JsonPair p : etal) {
@@ -464,7 +472,7 @@ void rafraichirEcran() {
 // ---------- Veille ----------
 
 void entrerEnVeille() {
-  Serial.printf("Veille profonde pour %lu s\n", (unsigned long)reglages.veilleS());
+  journalf("Veille profonde pour %lu s\n", (unsigned long)reglages.veilleS());
   Serial.flush();
   digitalWrite(BROCHE_LED, LOW);
   reseau.arreter();
@@ -505,7 +513,7 @@ void suivreSecteur() {
   surSecteur = s;
   env.activerQualiteAir(capteurChaud());
   derniereActiviteMs = millis();                     // sur batterie, le décompte repart de zéro
-  Serial.println(surSecteur ? "Secteur présent" : "Sur batterie");
+  journalln(surSecteur ? "Secteur présent" : "Sur batterie");
 }
 
 void reveillerEcran() {
@@ -531,7 +539,9 @@ void setup() {
   pinMode(BROCHE_LED, OUTPUT);
   digitalWrite(BROCHE_LED, LOW);                     // LED éteinte hors connexion Bluetooth
   reglages.charger();
-  Serial.printf("CaravaneDemo %s — carte Heltec %s, n° %s, nom « %s »\n", FIRMWARE_VERSION, CARTE_NOM, idCarte.c_str(), reglages.nomAffiche().c_str());
+  if (!reglages.journal() && cause != ESP_SLEEP_WAKEUP_TIMER) Serial.println("Journal série désactivé (réactivable depuis le téléphone : Administration)");
+  journalActif() = reglages.journal();
+  journalf("CaravaneDemo %s — carte Heltec %s, n° %s, nom « %s »\n", FIRMWARE_VERSION, CARTE_NOM, idCarte.c_str(), reglages.nomAffiche().c_str());
 
   brocheSecteur = reglages.secteur();
   if (rtc_gpio_is_valid_gpio((gpio_num_t)brocheSecteur)) rtc_gpio_deinit((gpio_num_t)brocheSecteur);
@@ -555,7 +565,7 @@ void setup() {
   esp_bt_mem_release(ESP_BT_MODE_CLASSIC_BT);
 #endif
   ble.demarrer(BLE_NOM_APPAREIL);
-  Serial.printf("Mémoire libre après Bluetooth : %u o (bloc max %u o)\n",
+  journalf("Mémoire libre après Bluetooth : %u o (bloc max %u o)\n",
                 (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
   appliquerComm();                                   // Wi-Fi et qualité d'air selon le mode
   nvsConfig.begin("caravane_cfg", false);
@@ -564,7 +574,7 @@ void setup() {
   enregistrerReleve();                               // un relevé à chaque démarrage
   derniereActiviteMs = millis();
   rafraichirEcran();
-  Serial.println(etatJson());
+  journalln(etatJson());
 }
 
 void loop() {
@@ -591,7 +601,7 @@ void loop() {
       if (ble.connecte()) {
         vbatMv = lireVbat();
         env.lire();
-        Serial.println(env.diagnostic());
+        journalln(env.diagnostic());
         ble.envoyerLigne(etatJson());
       }
     }

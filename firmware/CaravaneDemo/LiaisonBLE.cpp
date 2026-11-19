@@ -1,9 +1,10 @@
 // ==== Caravane =======================================================================
-// LiaisonBLE.cpp — firmware CaravaneDemo, version 0.9.1 — dernière modification : 2026-11-17
+// LiaisonBLE.cpp — firmware CaravaneDemo, version 0.9.2 — dernière modification : 2026-11-19
 // Auteur : Alexandre Phulpin (développement assisté par Claude)
 // Dépôt : https://github.com/alphulpin/Caravane
 // ====
 #include "LiaisonBLE.h"
+#include "Journal.h"
 #include "Config.h"
 #include <BLEUtils.h>
 #if defined(CONFIG_BLUEDROID_ENABLED)
@@ -38,7 +39,7 @@ void LiaisonBLE::demarrer(const char* nom) {
   annonce->setScanResponse(true);
   BLEDevice::startAdvertising();
   _actif = true;
-  Serial.printf("Bluetooth : actif (mémoire libre %u o)\n", (unsigned)ESP.getFreeHeap());
+  journalf("Bluetooth : actif (mémoire libre %u o)\n", (unsigned)ESP.getFreeHeap());
 }
 
 void LiaisonBLE::arreter() {
@@ -53,7 +54,7 @@ void LiaisonBLE::arreter() {
   xSemaphoreTake(_verrou, portMAX_DELAY);
   _tampon = "";
   xSemaphoreGive(_verrou);
-  Serial.printf("Bluetooth : arrêté (mémoire libre %u o, bloc max %u o)\n",
+  journalf("Bluetooth : arrêté (mémoire libre %u o, bloc max %u o)\n",
                 (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
 }
 

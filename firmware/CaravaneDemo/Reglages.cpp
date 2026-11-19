@@ -1,5 +1,5 @@
 // ==== Caravane =======================================================================
-// Reglages.cpp — firmware CaravaneDemo, version 0.9.1 — dernière modification : 2026-11-17
+// Reglages.cpp — firmware CaravaneDemo, version 0.9.2 — dernière modification : 2026-11-19
 // Auteur : Alexandre Phulpin (développement assisté par Claude)
 // Dépôt : https://github.com/alphulpin/Caravane
 // ====
@@ -23,6 +23,7 @@ void Reglages::charger() {
   _veilleS     = _nvs.getULong("veille", VEILLE_DEFAUT_S);
   _fuseauMin   = _nvs.getShort("tz", FUSEAU_DEFAUT_MIN);
   _releveS     = _nvs.getULong("releve", RELEVE_DEFAUT_S);
+  _journal     = _nvs.getBool("journal", true);
   if (_nvs.getBytesLength("etal") == Etalonnage::TAILLE) _nvs.getBytes("etal", _etal.donnees(), Etalonnage::TAILLE);
   else if (_nvs.isKey("tcorr")) _etal.definir(G_TEMP, 1.0f, _nvs.getShort("tcorr", 0) / 10.0f);   // ancienne correction
   _numero      = _nvs.getULong("numero", 0);
@@ -157,5 +158,12 @@ bool Reglages::definirBroche(const char* nom, int v) {
   if (!cible || *cible == v) return false;
   *cible = (int8_t)v;
   _nvs.putChar(cleNvs, *cible);
+  return true;
+}
+
+bool Reglages::definirJournal(bool actif) {
+  if (actif == _journal) return false;
+  _journal = actif;
+  _nvs.putBool("journal", actif);
   return true;
 }

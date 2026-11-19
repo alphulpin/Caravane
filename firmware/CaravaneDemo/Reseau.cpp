@@ -1,9 +1,10 @@
 // ==== Caravane =======================================================================
-// Reseau.cpp — firmware CaravaneDemo, version 0.9.1 — dernière modification : 2026-11-19
+// Reseau.cpp — firmware CaravaneDemo, version 0.9.2 — dernière modification : 2026-11-19
 // Auteur : Alexandre Phulpin (développement assisté par Claude)
 // Dépôt : https://github.com/alphulpin/Caravane
 // ====
 #include "Reseau.h"
+#include "Journal.h"
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
@@ -26,7 +27,7 @@ void Reseau::demarrer(const String& ssid, const String& mdp) {
   _ntpLance = false;
   _etaitConnecte = false;
   _depuisMs = millis();
-  Serial.printf("Wi-Fi : connexion à « %s »\n", _ssid.c_str());
+  journalf("Wi-Fi : connexion à « %s »\n", _ssid.c_str());
 }
 
 void Reseau::arreter() {
@@ -35,7 +36,7 @@ void Reseau::arreter() {
   WiFi.mode(WIFI_OFF);
   _actif = false;
   _ntpLance = false;
-  Serial.println("Wi-Fi : arrêté");
+  journalln("Wi-Fi : arrêté");
 }
 
 const char* Reseau::etat() const {
@@ -48,13 +49,13 @@ void Reseau::entretenir() {
   bool c = WiFi.status() == WL_CONNECTED;
   if (!c) {
     if (_etaitConnecte) {               // connexion perdue
-      Serial.println("Wi-Fi : connexion perdue");
+      journalln("Wi-Fi : connexion perdue");
       _etaitConnecte = false;
       _depuisMs = millis();
     }
     // Pas connecté au bout de 30 s : on relance la connexion (sans cela, elle peut rester bloquée)
     if (millis() - _depuisMs > 30000) {
-      Serial.printf("Wi-Fi : pas de connexion après 30 s (statut %d), nouvel essai\n", (int)WiFi.status());
+      journalf("Wi-Fi : pas de connexion après 30 s (statut %d), nouvel essai\n", (int)WiFi.status());
       WiFi.disconnect();
       delay(100);
       WiFi.begin(_ssid.c_str(), _mdp.c_str());
@@ -67,7 +68,7 @@ void Reseau::entretenir() {
   // Heure système en UTC ; l'affichage applique le fuseau des réglages.
   configTime(0, 0, "pool.ntp.org", "time.google.com");
   _ntpLance = true;
-  Serial.printf("Wi-Fi : connecté, IP %s, %d dBm\n", WiFi.localIP().toString().c_str(), WiFi.RSSI());
+  journalf("Wi-Fi : connecté, IP %s, %d dBm\n", WiFi.localIP().toString().c_str(), WiFi.RSSI());
 }
 
 String Reseau::scanner() {
@@ -121,7 +122,7 @@ int Reseau::envoyerSupabase(const String& url, const String& cle, const String& 
   http.addHeader("Prefer", "return=minimal");
   uint32_t debut = millis();
   int code = http.POST(lignesJson);
-  Serial.printf("Supabase : réponse %d en %lu ms (%u octets envoyés)\n", code, (unsigned long)(millis() - debut),
+  journalf("Supabase : réponse %d en %lu ms (%u octets envoyés)\n", code, (unsigned long)(millis() - debut),
                 (unsigned)lignesJson.length());
   if (code < 0) {
     // Diagnostic : adresse résolue ? mémoire disponible pour le chiffrement ? erreur TLS ?
@@ -138,7 +139,7 @@ int Reseau::envoyerSupabase(const String& url, const String& cle, const String& 
     brut.stop();
     bool tcp80 = brut.connect("example.com", 80, 5000);
     brut.stop();
-    Serial.printf("Supabase : échec de connexion (%d) vers %s, DNS %s, TLS « %s », mémoire libre %u o (bloc max %u o)\n",
+    journalf("Supabase : échec de connexion (%d) vers %s, DNS %s, TLS « %s », mémoire libre %u o (bloc max %u o)\n",
                   code, hote.c_str(), dns ? ip.toString().c_str() : "ÉCHEC", erreur,
                   (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
     // Poignée de main TLS seule, chronométrée
@@ -151,15 +152,15 @@ int Reseau::envoyerSupabase(const String& url, const String& cle, const String& 
     char errTls[100] = "";
     if (!tlsOk) tls.lastError(errTls, sizeof(errTls));
     tls.stop();
-    Serial.printf("Réseau : TLS seul %s en %lu ms %s, Wi-Fi %d dBm\n", tlsOk ? "OK" : "ÉCHEC",
+    journalf("Réseau : TLS seul %s en %lu ms %s, Wi-Fi %d dBm\n", tlsOk ? "OK" : "ÉCHEC",
                   (unsigned long)dureeTls, errTls, WiFi.RSSI());
-    Serial.printf("Réseau : TCP %s:443 %s, TCP example.com:80 %s, heure Internet %s, passerelle %s, DNS %s\n",
+    journalf("Réseau : TCP %s:443 %s, TCP example.com:80 %s, heure Internet %s, passerelle %s, DNS %s\n",
                   ip.toString().c_str(), tcp443 ? "OK" : "ÉCHEC", tcp80 ? "OK" : "ÉCHEC",
                   time(nullptr) > 1700000000 ? "réglée" : "NON réglée",
                   WiFi.gatewayIP().toString().c_str(), WiFi.dnsIP().toString().c_str());
   }
-  if (code != 201 && code != 409) Serial.printf("Supabase : HTTP %d %s\n", code, http.getString().c_str());
-  else Serial.printf("Supabase : %u relevé(s) publié(s)\n", nombre);
+  if (code != 201 && code != 409) journalf("Supabase : HTTP %d %s\n", code, http.getString().c_str());
+  else journalf("Supabase : %u relevé(s) publié(s)\n", nombre);
   http.end();
   _dernier.code = code;
   if (_dernier.ok()) _dernier.nombre = nombre;

@@ -1,9 +1,10 @@
 // ==== Caravane =======================================================================
-// Environnement.cpp — firmware CaravaneDemo, version 0.9.1 — dernière modification : 2026-11-17
+// Environnement.cpp — firmware CaravaneDemo, version 0.9.2 — dernière modification : 2026-11-19
 // Auteur : Alexandre Phulpin (développement assisté par Claude)
 // Dépôt : https://github.com/alphulpin/Caravane
 // ====
 #include "Environnement.h"
+#include "Journal.h"
 
 static const uint8_t ADR_HDC = 0x40;
 static const uint8_t ADR_BMP = 0x76;
@@ -90,20 +91,20 @@ void Environnement::demarrer(uint8_t sda, uint8_t scl, bool partage) {
   _ccsActif = false;
   _brut = _m;
 
-  Serial.printf("Capteurs : temp./hum. %s (id %02X%02X/%02X%02X), BMP280 %s, CCS811 %s\n",
+  journalf("Capteurs : temp./hum. %s (id %02X%02X/%02X%02X), BMP280 %s, CCS811 %s\n",
                 nomTH(), _idTH[0], _idTH[1], _idTH[2], _idTH[3], _m.bmpOk ? "ok" : "absent",
                 _m.ccsOk ? (_adrCcs == 0x5A ? "ok (0x5A)" : "ok (0x5B)") : "absent");
 }
 
 void Environnement::balayer() {
-  Serial.printf("Balayage I2C (%s) :", _bus == &Wire ? "Wire, partagé avec l'écran" : "Wire1");
+  journalf("Balayage I2C (%s) :", _bus == &Wire ? "Wire, partagé avec l'écran" : "Wire1");
   _nbAdresses = 0;
   for (uint8_t adr = 1; adr < 127; adr++) {
     if (!present(adr)) continue;
-    Serial.printf(" 0x%02X", adr);
+    journalf(" 0x%02X", adr);
     if (_nbAdresses < sizeof(_adresses)) _adresses[_nbAdresses++] = adr;
   }
-  Serial.println(_nbAdresses ? "" : " aucun périphérique");
+  journalln(_nbAdresses ? "" : " aucun périphérique");
 }
 
 const char* Environnement::nomTH() const {
@@ -128,7 +129,7 @@ void Environnement::lireHdc() {
   if (_typeTH != TypeTH::Hdc1080) return;
   uint8_t b[4];                       // pointeur 0x00 : déclenche température puis humidité
   if (!lireHdcRegistre(_bus, 0x00, b, 4, 20)) {
-    Serial.println("HDC1080 : lecture impossible");
+    journalln("HDC1080 : lecture impossible");
     return;
   }
   memcpy(_brutTH, b, 4);
@@ -141,7 +142,7 @@ void Environnement::lireHdc() {
 void Environnement::lireSi7021() {
   uint8_t t[3], h[3];                 // commandes « sans maintien » : 0xF3 température, 0xF5 humidité
   if (!lireHdcRegistre(_bus, 0xF3, t, 3, 60) || !lireHdcRegistre(_bus, 0xF5, h, 3, 30)) {
-    Serial.println("Si7021 : lecture impossible");
+    journalln("Si7021 : lecture impossible");
     return;
   }
   _brutTH[0] = t[0]; _brutTH[1] = t[1]; _brutTH[2] = h[0]; _brutTH[3] = h[1];
@@ -211,14 +212,14 @@ void Environnement::activerQualiteAir(bool actif) {
     const uint8_t mode = 0x10;                    // une mesure par seconde
     if (!ecrire(_adrCcs, 0x01, &mode, 1)) return;
     _ccsActif = true;
-    Serial.println("Qualité d'air : démarrée");
+    journalln("Qualité d'air : démarrée");
   } else {
     const uint8_t repos = 0x00;
     ecrire(_adrCcs, 0x01, &repos, 1);
     _ccsActif = false;
     _m.eco2Ppm = _m.tvocPpb = 0;
     _brut.eco2Ppm = _brut.tvocPpb = 0;
-    Serial.println("Qualité d'air : arrêtée");
+    journalln("Qualité d'air : arrêtée");
   }
 }
 
@@ -233,7 +234,7 @@ void Environnement::lireCcs() {
   }
   uint8_t r[6];
   if (!lireRegs(_adrCcs, 0x02, r, 6)) return;
-  if (r[4] & 0x01) { Serial.printf("CCS811 erreur 0x%02X\n", r[5]); return; }
+  if (r[4] & 0x01) { journalf("CCS811 erreur 0x%02X\n", r[5]); return; }
   if (!(r[4] & 0x08)) return;                     // pas de nouvelle valeur
   _m.eco2Ppm = (r[0] << 8) | r[1];
   _m.tvocPpb = (r[2] << 8) | r[3];

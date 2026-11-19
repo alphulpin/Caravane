@@ -22,6 +22,7 @@ Un champ absent, vide (`""`) ou nul (`0`) ne modifie rien. Les durées et l'heur
 | `tz_min` | nombre | décalage local en minutes (`-new Date().getTimezoneOffset()`) | 60 | −720 à 840 |
 | `inactivite_s` | nombre | inactivité avant veille profonde (ou avant extinction de l'écran si la carte reste éveillée) | 300 | 30 à 3600 |
 | `veille_s` | nombre | durée de la veille profonde | 900 | 60 à 86400 |
+| `journal` | booléen | messages de suivi sur le port série (moniteur de l'IDE) ; conservé par `defaut` | true | |
 | `etalonnage` | objet | par grandeur `{"pente":p,"decalage":d}` : valeur = p × brute + d ; seules les grandeurs et clés envoyées changent ; conservé par `defaut` | pente 1, décalage 0 | pente 0,5 à 2 ; décalage ±10 °C, ±20 %, ±50 hPa, ±500 ppm/ppb/mV |
 | `releve_s` | nombre | période des relevés quand la carte reste éveillée (secteur ou Wi-Fi) ; sur batterie, un relevé à chaque réveil | 900 | 60 à 86400 |
 | `defaut` | booléen | `true` = temporisations d'origine (nom, Wi-Fi, Supabase et broches conservés) | — | — |
