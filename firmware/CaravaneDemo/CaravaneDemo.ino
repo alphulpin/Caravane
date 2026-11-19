@@ -1,5 +1,5 @@
 // ==== Caravane =======================================================================
-// CaravaneDemo.ino — firmware CaravaneDemo, version 0.9.0 — dernière modification : 2026-11-19
+// CaravaneDemo.ino — firmware CaravaneDemo, version 0.9.1 — dernière modification : 2026-11-19
 // Auteur : Alexandre Phulpin (développement assisté par Claude)
 // Dépôt : https://github.com/alphulpin/Caravane
 // ====
@@ -132,6 +132,11 @@ void ajouterLigne(JsonArray lignes, const Releve& r) {
   if (r.vbat_mv)               v["vbat_mv"]   = r.vbat_mv;
 }
 
+// Après un échec d'envoi : nouvel essai rapide (10 s) les 3 premières fois, puis toutes les minutes
+uint8_t echecsEnvoi = 0;
+uint32_t delaiNouvelEssai() { return echecsEnvoi <= 3 ? 10000 : 60000; }
+void compterEnvoi() { echecsEnvoi = reseau.dernierEnvoi().ok() ? 0 : (uint8_t)min(echecsEnvoi + 1, 100); }
+
 // Mémoire suffisante pour une connexion HTTPS ? Sur l'ESP32 (V2), Bluetooth + Wi-Fi + TLS ne
 // tiennent pas ensemble : on attend que le Bluetooth soit coupé. La V3 a assez de place.
 bool memoirePourHttps() {
@@ -149,7 +154,9 @@ int envoyerLot(const Releve* lot, size_t debut, size_t n) {
   for (size_t i = debut; i < debut + n; i++) ajouterLigne(lignes, lot[i]);
   String corps;
   serializeJson(doc, corps);
-  return reseau.envoyerSupabase(reglages.sbUrl(), reglages.sbCle(), reglages.sbTable(), corps, n);
+  int code = reseau.envoyerSupabase(reglages.sbUrl(), reglages.sbCle(), reglages.sbTable(), corps, n);
+  compterEnvoi();
+  return code;
 }
 
 // Wi-Fi : publie les plus anciens relevés non publiés (un lot par appel)
@@ -173,7 +180,7 @@ void publierWifi() {
     Serial.printf("Doublon : %u relevé(s) réglé(s) un par un\n", (unsigned)publies);
     return;
   }
-  Serial.printf("Publication échouée (%d), nouvel essai dans 1 min\n", code);
+  Serial.printf("Publication échouée (%d), nouvel essai dans %lu s\n", code, (unsigned long)(delaiNouvelEssai() / 1000));
 }
 
 // LoRa : seul le dernier relevé sera envoyé (à venir, après réception des passerelles).
@@ -264,6 +271,7 @@ void publierConfig() {
   String corps;
   serializeJson(doc, corps);
   reseau.envoyerSupabase(reglages.sbUrl(), reglages.sbCle(), SB_TABLE_CONFIG, corps, 1);
+  compterEnvoi();
   if (!reseau.dernierEnvoi().ok()) return;
   Serial.printf("Configuration publiée (%s)\n", configEvenement.c_str());
   configEvenement = "";
@@ -597,16 +605,16 @@ void loop() {
   }
 
   // Publication Wi-Fi des relevés en attente : lot suivant tout de suite si le précédent
-  // est passé, sinon nouvel essai au bout d'une minute.
+  // est passé, sinon nouvel essai après 10 s (3 fois), puis toutes les minutes.
   daterRelevesSansHeure();
   if (configEvenement.isEmpty() && derniereConfigMs && millis() - derniereConfigMs >= CONFIG_PERIODE_S * 1000UL)
     configAPublier("periodique");
   bool publicationPossible = reglages.wifiActif() && reseau.connecte() && reglages.supabasePret() && memoirePourHttps();
   if (publicationPossible && configEvenement.length() &&
-      (dernierEssaiConfigMs == 0 || millis() - dernierEssaiConfigMs >= 60000)) publierConfig();
+      (dernierEssaiConfigMs == 0 || millis() - dernierEssaiConfigMs >= delaiNouvelEssai())) publierConfig();
   bool attendreHeure = nbSansHeure && millis() < ATTENTE_HEURE_MS;
   if (publicationPossible && releves.aPublier() && !attendreHeure) {
-    uint32_t delai = reseau.dernierEnvoi().ok() ? 2000 : 60000;
+    uint32_t delai = reseau.dernierEnvoi().ok() ? 2000 : delaiNouvelEssai();
     if (dernierEssaiPublicationMs == 0 || millis() - dernierEssaiPublicationMs >= delai) publierWifi();
   }
 

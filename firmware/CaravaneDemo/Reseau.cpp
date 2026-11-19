@@ -1,5 +1,5 @@
 // ==== Caravane =======================================================================
-// Reseau.cpp — firmware CaravaneDemo, version 0.9.0 — dernière modification : 2026-11-17
+// Reseau.cpp — firmware CaravaneDemo, version 0.9.1 — dernière modification : 2026-11-19
 // Auteur : Alexandre Phulpin (développement assisté par Claude)
 // Dépôt : https://github.com/alphulpin/Caravane
 // ====
@@ -15,6 +15,10 @@ void Reseau::demarrer(const String& ssid, const String& mdp) {
   _mdp = mdp;
   WiFi.persistent(false);              // les identifiants sont gardés par Reglages, pas par le Wi-Fi
   WiFi.mode(WIFI_STA);
+  // Pas d'économie d'énergie radio en mode Wi-Fi (la carte est alors sur secteur ou reste
+  // éveillée de toute façon) : en veille modem, la poignée de main TLS, longue sur la V2,
+  // perd des paquets et le serveur coupe (erreurs -1 / -5 « EOF » après 15 s).
+  WiFi.setSleep(false);
   WiFi.setAutoReconnect(true);
   WiFi.disconnect();
   WiFi.begin(_ssid.c_str(), _mdp.c_str());
