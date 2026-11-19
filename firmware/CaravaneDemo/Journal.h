@@ -5,8 +5,10 @@
 // ====
 // Journal — messages de suivi sur le port série (moniteur série de l'IDE, 115200 bauds).
 // Activé par défaut ; désactivable depuis le téléphone (Administration > Journal série) une fois
-// la mise au point terminée. Le code reste dans le firmware : on évite seulement le temps passé
-// à écrire (environ 1 ms par 100 caractères à 115200 bauds).
+// la mise au point terminée : carte silencieuse en production.
+// Gain : seulement le temps d'écriture (environ 1 ms par 100 caractères). Pas de gain de mémoire
+// notable : les textes sont en flash, le formatage est temporaire, et les tampons du port série
+// (1 à 2 Ko) restent réservés puisque le port est toujours initialisé.
 #pragma once
 #include <Arduino.h>
 
