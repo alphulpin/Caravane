@@ -10,14 +10,27 @@ ce qui permet d'ajouter un capteur ou d'avoir des cartes équipées différemmen
 | `appareil` | n° de série de la carte (MAC, 12 hexa) |
 | `releve_id` | n° de relevé propre à la carte ; (`appareil`, `releve_id`) est unique : un renvoi est refusé (409) |
 | `mesure_le` | heure du relevé sur la carte (null si inconnue) ; `recu_le` : arrivée dans Supabase |
+| `horodatage` | colonne de temps de la série, calculée par la base : `mesure_le`, à défaut `recu_le` ; indexée avec `appareil` |
 | `nom`, `carte`, `dev_eui` | anciennes lignes seulement ; désormais dans `caravane_config` |
 | `source` | `wifi` ou `lora` |
 | `secteur` | caravane branchée sur le 230 V |
 | `valeurs` | `{"temp_c":21.4,"hum_pct":55,"press_hpa":1013.2,"eco2_ppm":450,"tvoc_ppb":8,"vbat_mv":3950}` (clés présentes seulement si mesurées) |
 
 - `caravane_grandeurs` : catalogue des clés (libellé, unité, ordre d'affichage). Une clé absente du catalogue est quand même stockée et affichée (libellé = code).
-- `caravane_series` (vue) : format long `mesure_le / appareil / nom / grandeur / libelle / unite / valeur`, pour Grafana.
+- `caravane_series` (vue) : format long `horodatage / appareil / nom / grandeur / libelle / unite / valeur`, pour Grafana.
 - `caravane_cartes` (vue) : dernière configuration connue de chaque carte (nom, carte, firmware, config complète).
+
+### Séries temporelles : agrégats et conservation (`supabase/caravane_agregats.sql`)
+
+PostgreSQL standard (TimescaleDB n'existe plus sur Supabase en Postgres 17) :
+
+- **Index** sur (`appareil`, `horodatage`) : toute requête par carte et plage de temps l'utilise.
+- **`caravane_agregats`** : par carte, grandeur et tranche (`heure`, ou `jour` = journée civile à Paris) : nombre de points, moyenne, minimum, maximum.
+- **`caravane_agreger(depuis)`** recalcule les tranches qui contiennent un relevé *reçu* depuis cette date : un relevé publié en retard (gardé en mémoire par la carte) corrige bien sa tranche passée. Tâche `pg_cron` toutes les 15 min sur les dernières 24 h.
+- **Conservation** : `caravane_purger(1 an)` supprime les relevés bruts de plus d'un an (tâche `pg_cron` mensuelle) ; les agrégats sont gardés indéfiniment (quelques Mo par an et par carte).
+- **Grafana** choisit la résolution selon la plage affichée : relevés bruts jusqu'à 7 jours, moyennes horaires jusqu'à 90 jours, journalières au-delà (min et max en pointillés). Une interruption de transmission apparaît comme un trou dans la courbe (plus d'1 h sans relevé en vue brute, 3 h en horaire, 2 jours en journalier).
+
+Suivi des tâches planifiées : `select jobname, schedule, active from cron.job where jobname like 'caravane-%';`
 
 ### Mesures et configuration séparées
 

@@ -34,8 +34,16 @@ create table if not exists public.caravane_releves (
 -- considère alors ce relevé comme publié. (Pas de « on conflict » : il exigerait le droit de
 -- lecture pour la clé publique.)
 create unique index if not exists caravane_releves_unique on public.caravane_releves (appareil, releve_id);
-create index if not exists caravane_releves_appareil_date
-  on public.caravane_releves (appareil, coalesce(mesure_le, recu_le) desc);
+
+-- Colonne de temps de la série : heure de mesure de la carte, à défaut heure d'arrivée.
+-- Calculée et stockée par PostgreSQL (rien à envoyer), indexée : c'est elle que filtrent
+-- Grafana et les agrégats.
+alter table public.caravane_releves
+  add column if not exists horodatage timestamptz generated always as (coalesce(mesure_le, recu_le)) stored;
+drop index if exists public.caravane_releves_appareil_date;
+create index if not exists caravane_releves_appareil_horodatage
+  on public.caravane_releves (appareil, horodatage desc);
+create index if not exists caravane_releves_recu_le on public.caravane_releves (recu_le);
 
 create table if not exists public.caravane_grandeurs (
   code     text primary key,       -- clé utilisée dans « valeurs »
@@ -97,7 +105,7 @@ create or replace view public.caravane_cartes
 -- apparaît quand même (libellé = code).
 create or replace view public.caravane_series
   with (security_invoker = true) as
-  select coalesce(r.mesure_le, r.recu_le)          as mesure_le,
+  select r.horodatage,
          r.appareil,
          coalesce(k.nom, r.appareil)               as nom,
          v.key                                     as grandeur,

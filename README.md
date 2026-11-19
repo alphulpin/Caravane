@@ -15,6 +15,7 @@ Domotique de caravane sur carte Heltec (ESP32) : surveillance de l'alimentation 
 | `docs/protocole-ble.md` | Protocole Bluetooth carte ↔ téléphone (champs JSON). |
 | `docs/cablage.md` | Brochage des capteurs et du contact secteur, pour V2 et V3. |
 | `docs/grafana.md` | Visualisation des relevés dans Grafana Cloud, pas à pas. |
+| `supabase/caravane_agregats.sql` | Agrégats horaires et journaliers, conservation des relevés bruts (1 an), tâches planifiées `pg_cron`. À lancer après `caravane_releves.sql`. |
 | `docs/donnees.md` | Modèle de données et trame LoRa prévue. |
 | `docs/passerelle-ttn.md` | Mise en service de la passerelle Dragino LPS8N et de l’application TTN. |
 | `outils/gen_grafana.py` | Génère le tableau de bord Grafana. |
@@ -51,6 +52,7 @@ Tout se règle depuis le client web : nom de la carte (Réglages) ; étalonnage 
 ## Supabase
 
 1. Dans le projet Supabase : SQL Editor > coller `supabase/caravane_releves.sql` > Run. (Relançable ; reprend les lignes de l'ancienne table `caravane_mesures` si elle existe.)
+   Puis, de même, `supabase/caravane_agregats.sql` (agrégats et tâches planifiées).
 2. Project Settings > API : copier l'URL du projet et la clé publique (`anon` ou `publishable`).
 3. Dans le client web, Administration > Supabase : coller l'URL et la clé, Enregistrer.
 4. Visualisation : voir `docs/grafana.md`.

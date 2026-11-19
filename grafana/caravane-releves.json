@@ -116,7 +116,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "select distinct on (appareil, grandeur)\n  nom || ' · ' || libelle || coalesce(' (' || unite || ')', '') as \"grandeur\", valeur\nfrom caravane_series\nwhere appareil in ($carte) and grandeur in ($grandeur)\norder by appareil, grandeur, mesure_le desc"
+          "rawSql": "select distinct on (appareil, grandeur)\n  nom || ' · ' || libelle || coalesce(' (' || unite || ')', '') as \"grandeur\", valeur\nfrom caravane_series\nwhere appareil in ($carte) and grandeur in ($grandeur)\norder by appareil, grandeur, horodatage desc"
         }
       ],
       "fieldConfig": {
@@ -169,7 +169,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "select coalesce(nom, appareil) as carte, extract(epoch from max(coalesce(mesure_le, recu_le))) * 1000 as \"dernier relevé\"\nfrom caravane_releves\nwhere appareil in ($carte)\ngroup by 1"
+          "rawSql": "select coalesce(k.nom, r.appareil) as carte, extract(epoch from max(r.horodatage)) * 1000 as \"dernier relevé\"\nfrom caravane_releves r left join caravane_cartes k using (appareil)\nwhere r.appareil in ($carte)\ngroup by 1"
         }
       ],
       "fieldConfig": {
@@ -215,7 +215,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "select mesure_le as time, nom as metric, valeur as value\nfrom caravane_series\nwhere appareil in ($carte) and grandeur = '$grandeur' and $__timeFilter(mesure_le)\norder by 1"
+          "rawSql": "with plage as (select $__timeTo()::timestamptz - $__timeFrom()::timestamptz as d),\nresolution as (\n  select case when d <= interval '7 days' then 'brut'\n              when d <= interval '90 days' then 'heure' else 'jour' end as r,\n         case when d <= interval '7 days' then interval '1 hour'\n              when d <= interval '90 days' then interval '3 hours' else interval '2 days' end as trou\n  from plage),\npoints as (\n  select s.horodatage as time, s.nom as metric, s.valeur as value\n  from caravane_series s, resolution\n  where resolution.r = 'brut'\n    and s.appareil in ($carte) and s.grandeur = '$grandeur' and $__timeFilter(s.horodatage)\n  union all\n  select a.debut, coalesce(k.nom, a.appareil) || m.suffixe,\n         case m.suffixe when '' then a.moyenne when ' · min' then a.mini else a.maxi end\n  from caravane_agregats a\n  left join caravane_cartes k using (appareil)\n  cross join resolution\n  cross join (values (''), (' · min'), (' · max')) m(suffixe)\n  where a.periode = resolution.r\n    and a.appareil in ($carte) and a.grandeur = '$grandeur' and $__timeFilter(a.debut)),\n-- un point vide après chaque interruption, pour que la courbe montre le trou\ntrous as (\n  select p.time + interval '1 second' as time, p.metric, null::double precision as value\n  from (select time, metric, lead(time) over (partition by metric order by time) as suivant from points) p,\n       resolution\n  where p.suivant - p.time > resolution.trou)\nselect * from points\nunion all\nselect * from trous\norder by 1"
         }
       ],
       "fieldConfig": {
@@ -224,12 +224,39 @@
             "lineWidth": 2,
             "fillOpacity": 8,
             "showPoints": "auto",
-            "spanNulls": 3600000,
+            "spanNulls": false,
             "drawStyle": "line",
             "lineInterpolation": "smooth"
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*· (min|max)$"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    6,
+                    4
+                  ]
+                }
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 1
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "legend": {
@@ -244,7 +271,8 @@
       },
       "repeat": "grandeur",
       "repeatDirection": "h",
-      "maxPerRow": 2
+      "maxPerRow": 2,
+      "description": "Jusqu'à 7 jours : chaque relevé. Jusqu'à 90 jours : moyenne horaire. Au-delà : moyenne journalière. En vue agrégée, minimum et maximum de la tranche en pointillés."
     },
     {
       "id": 4,
@@ -270,7 +298,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "select coalesce(mesure_le, recu_le) as time, coalesce(nom, appareil) as metric,\n  case when secteur then 1 else 0 end as value\nfrom caravane_releves\nwhere appareil in ($carte) and secteur is not null and $__timeFilter(coalesce(mesure_le, recu_le))\norder by 1"
+          "rawSql": "select r.horodatage as time, coalesce(k.nom, r.appareil) as metric,\n  case when r.secteur then 1 else 0 end as value\nfrom caravane_releves r left join caravane_cartes k using (appareil)\nwhere r.appareil in ($carte) and r.secteur is not null and $__timeFilter(r.horodatage)\norder by 1"
         }
       ],
       "fieldConfig": {
@@ -331,7 +359,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "select coalesce(mesure_le, recu_le) as \"heure\", coalesce(nom, appareil) as \"carte\", releve_id as \"n°\", source,\n  case when secteur then 'secteur' else 'batterie' end as \"alim.\",\n  valeurs::text as \"valeurs\", recu_le as \"reçu le\"\nfrom caravane_releves\nwhere appareil in ($carte) and $__timeFilter(coalesce(mesure_le, recu_le))\norder by 1 desc\nlimit 200"
+          "rawSql": "select r.horodatage as \"heure\", coalesce(k.nom, r.appareil) as \"carte\", r.releve_id as \"n°\", r.source,\n  case when r.secteur then 'secteur' else 'batterie' end as \"alim.\",\n  r.valeurs::text as \"valeurs\", r.recu_le as \"reçu le\"\nfrom caravane_releves r left join caravane_cartes k using (appareil)\nwhere r.appareil in ($carte) and $__timeFilter(r.horodatage)\norder by 1 desc\nlimit 200"
         }
       ],
       "fieldConfig": {

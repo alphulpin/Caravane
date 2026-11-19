@@ -4,7 +4,7 @@ Grafana lit directement la base Supabase avec un compte en lecture seule. Le tab
 
 Ce qu'il affiche, pour les cartes et grandeurs choisies (listes « Carte » et « Grandeur » en haut) :
 - dernière valeur de chaque grandeur, heure du dernier relevé ;
-- une courbe par grandeur (une série par carte) : un nouveau capteur apparaît tout seul dans la liste ;
+- une courbe par grandeur (une série par carte) : un nouveau capteur apparaît tout seul dans la liste ; résolution automatique selon la plage (relevés jusqu'à 7 jours, moyennes horaires jusqu'à 90 jours, journalières au-delà, avec min/max en pointillés) ;
 - bandeau secteur / batterie dans le temps ;
 - tableau des 200 derniers relevés.
 
