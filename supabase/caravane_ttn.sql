@@ -16,6 +16,8 @@
 --   releve_id  = n° de relevé de la carte (un relevé reçu deux fois n'est enregistré qu'une fois)
 --   mesure_le  = heure de réception TTN (la trame ne transporte pas l'heure)
 --   valeurs    = valeurs décodées + qualité radio (lora_rssi, lora_snr : meilleure passerelle)
+-- Port 2 : la trame porte en plus la configuration de la carte (démarrage, changement,
+-- battement quotidien), rangée dans caravane_config comme celle publiée en Wi-Fi.
 
 -- Paramètre unique sans nom, de type jsonb : PostgREST (l'API de Supabase) lui passe alors le
 -- corps entier de la requête, tel que TTN l'envoie.
@@ -32,12 +34,15 @@ declare
   charge   jsonb := montant -> 'decoded_payload';
   radio    jsonb;
   valeurs  jsonb;
+  v_appareil text;
+  port     int;
 begin
   -- Seuls les relevés (port 1) correctement décodés nous intéressent
   if dev_eui is null or dev_eui !~ '^[0-9A-F]{6}FFFE[0-9A-F]{6}$' then
     raise exception 'DevEUI absent ou inattendu : %', dev_eui using errcode = '22023';
   end if;
-  if coalesce((montant ->> 'f_port')::int, 0) <> 1 or charge is null
+  port := coalesce((montant ->> 'f_port')::int, 0);
+  if port not in (1, 2) or charge is null
      or jsonb_typeof(charge -> 'valeurs') <> 'object' or (charge ->> 'releve_id') is null then
     return;                            -- autre port, ou trame non décodée : ignorée sans erreur
   end if;
@@ -51,8 +56,9 @@ begin
   if radio ? 'rssi' then valeurs := valeurs || jsonb_build_object('lora_rssi', (radio ->> 'rssi')::numeric); end if;
   if radio ? 'snr'  then valeurs := valeurs || jsonb_build_object('lora_snr',  (radio ->> 'snr')::numeric);  end if;
 
+  v_appareil := substr(dev_eui, 1, 6) || substr(dev_eui, 11, 6);
   insert into caravane_releves (appareil, releve_id, source, mesure_le, secteur, dev_eui, valeurs)
-  values (substr(dev_eui, 1, 6) || substr(dev_eui, 11, 6),
+  values (v_appareil,
           (charge ->> 'releve_id')::bigint,
           'lora',
           coalesce((message ->> 'received_at')::timestamptz, now()),
@@ -60,6 +66,21 @@ begin
           dev_eui,
           valeurs)
   on conflict (appareil, releve_id) do nothing;
+
+  -- Configuration jointe (port 2)
+  if port = 2 and jsonb_typeof(charge -> 'config') = 'object' then
+    insert into caravane_config (appareil, recu_le, source, evenement, config)
+    values (v_appareil,
+            coalesce((message ->> 'received_at')::timestamptz, now()),
+            'lora',
+            coalesce(charge ->> 'evenement', 'periodique'),
+            (charge -> 'config')
+              || jsonb_build_object('carte', 'V3', 'dev_eui', dev_eui,
+                                    'ttn_id', message #>> '{end_device_ids,device_id}')
+              || jsonb_build_object('etat', coalesce(charge -> 'etat', '{}'::jsonb)
+                                            || jsonb_strip_nulls(jsonb_build_object('lora_rssi', radio -> 'rssi',
+                                                                                    'lora_snr',  radio -> 'snr'))));
+  end if;
 end $$;
 
 -- Appelable avec la clé publique (c'est elle que porte le webhook TTN), et seulement ainsi

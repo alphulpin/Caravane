@@ -75,4 +75,20 @@ Relevé complet : 17 octets. L'heure n'est pas transmise : `mesure_le` = heure d
 
 Connexion OTAA (LoRaWAN 1.0.3) ; la session est gardée en mémoire RTC pendant la veille profonde (pas de nouvelle connexion à chaque réveil) et les nonces de connexion en flash. Après 3 échecs de connexion, les tentatives s'espacent (un réveil sur 4, 8, puis 16).
 
-À venir : la configuration sur un autre port LoRaWAN (FPort 2 ; mesures sur FPort 1), seulement au démarrage, sur changement et une fois par jour, en binaire compact (version firmware, période, étalonnages différents du défaut) ; le nom de la carte n'est pas transmis par radio (il est connu de la base par le Wi-Fi ou saisi dans TTN). Le décodeur TTN aiguille chaque port vers sa table.
+### Configuration par LoRa (port 2)
+
+Quand la configuration est à publier (démarrage, changement, battement d'environ 24 h) et que le Wi-Fi ne s'en charge pas, elle est **jointe au relevé** : même trame que le port 1, suivie de ce bloc, envoyée sur le port 2. Aucune émission supplémentaire.
+
+| Octets | Champ |
+|---|---|
+| 1 | événement : 0 démarrage, 1 changement, 2 périodique |
+| 1 | cause du démarrage : 0 autre, 1 mise sous tension, 2 redémarrage demandé, 3 plantage, 4 chien de garde, 5 baisse de tension, 6 réveil, 7 bouton reset |
+| 3 | version du firmware (majeur, mineur, correctif) |
+| 1 | mode de communication : 0 aucun, 1 Wi-Fi, 2 LoRa, 3 Wi-Fi + LoRa |
+| 2 | période des relevés (min) |
+| 2 | durée de veille (min) |
+| 1 | température de la puce (°C, signé ; 127 = absente) |
+| 1 | drapeaux : bit 0 journal série |
+| 1 + n | longueur du nom puis nom (UTF-8, 21 octets au plus) |
+
+Trame complète : 51 octets au plus, la limite des débits les plus lents (SF10 à SF12). La fonction `caravane_ttn` range le relevé dans `caravane_releves` et la configuration dans `caravane_config` (source `lora`), avec un bloc `etat` : tension LiPo, température de la puce, secteur, RSSI et SNR LoRa. L'étalonnage n'est pas transmis par radio.

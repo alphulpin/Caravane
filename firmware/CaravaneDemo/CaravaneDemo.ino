@@ -1,5 +1,5 @@
 // ==== Caravane =======================================================================
-// CaravaneDemo.ino — firmware CaravaneDemo, version 0.10.1 — dernière modification : 2026-11-21
+// CaravaneDemo.ino — firmware CaravaneDemo, version 0.10.2 — dernière modification : 2026-11-21
 // Auteur : Alexandre Phulpin (développement assisté par Claude)
 // Dépôt : https://github.com/alphulpin/Caravane
 // ====
@@ -194,6 +194,14 @@ void demarrerLora() {
   lora.demarrer(devEui, reglages.loraJoinEui(), reglages.loraAppKey());
 }
 
+// Configuration par LoRa (définie plus bas) : jointe au relevé, sur le port 2, quand elle est à
+// publier (démarrage, changement, battement quotidien) et que le Wi-Fi ne s'en charge pas
+bool configLoraAEnvoyer(uint32_t periodeS);
+size_t ajouterConfigLora(uint8_t* t);
+void configLoraEnvoyee();
+
+bool enCycleRapide = false;             // réveil éclair sur batterie (relevé puis veille)
+
 void publierLora() {
   if (!CARTE_LORA) return;
   demarrerLora();
@@ -201,9 +209,13 @@ void publierLora() {
   Releve r;
   uint16_t index;
   if (!releves.dernier(r, index)) return;
-  uint8_t trame[24];
+  uint8_t trame[80];
   size_t n = trameReleve(r, trame);
-  if (lora.envoyer(trame, n, 1) && !reglages.wifiActif()) releves.marquerPublies(&index, 1);
+  bool avecConfig = configLoraAEnvoyer(enCycleRapide ? reglages.veilleS() : reglages.releveS());
+  if (avecConfig) n += ajouterConfigLora(trame + n);
+  if (!lora.envoyer(trame, n, avecConfig ? 2 : 1)) return;
+  if (avecConfig) configLoraEnvoyee();
+  if (!reglages.wifiActif()) releves.marquerPublies(&index, 1);
 }
 
 // ---------- Configuration publiée (jumeau numérique) ----------
@@ -251,17 +263,95 @@ String empreinteConfig() {
   return s;
 }
 
-Preferences nvsConfig;                  // marque « configuration à publier », gardée en flash
+Preferences nvsConfig;                  // marques « configuration à publier », gardées en flash
 String configEvenement;                 // "demarrage" | "changement" | "periodique" ; vide = rien à publier
 uint32_t derniereConfigMs = 0;          // dernière publication réussie
 uint32_t dernierEssaiConfigMs = 0;
+String configEvtLora;                   // idem pour la voie LoRa (vide = rien à publier)
+// Secondes écoulées depuis la dernière configuration envoyée par LoRa (estimées d'après les
+// périodes de relevé, gardées pendant la veille) : battement quotidien même sans horloge
+RTC_DATA_ATTR uint32_t secondesDepuisConfigLora = 0;
+bool nvsConfigOuvert = false;
+
+void ouvrirNvsConfig() {
+  if (nvsConfigOuvert) return;
+  ouvrirNvsConfig();
+  configEvtLora   = nvsConfig.getString("evtl", "");
+  nvsConfigOuvert = true;
+}
 
 void configAPublier(const char* evenement) {
+  ouvrirNvsConfig();
   // Un démarrage pas encore publié reste un démarrage (il porte la cause du redémarrage)
-  if (configEvenement == "demarrage" && strcmp(evenement, "demarrage") != 0) return;
-  configEvenement = evenement;
-  nvsConfig.putString("evt", configEvenement);
+  if (!(configEvenement == "demarrage" && strcmp(evenement, "demarrage") != 0)) {
+    configEvenement = evenement;
+    nvsConfig.putString("evt", configEvenement);
+  }
+  if (CARTE_LORA && !(configEvtLora == "demarrage" && strcmp(evenement, "demarrage") != 0)) {
+    configEvtLora = evenement;
+    nvsConfig.putString("evtl", configEvtLora);
+  }
   journalf("Configuration à publier (%s)\n", evenement);
+}
+
+uint8_t codeCauseRedemarrage() {
+  switch (esp_reset_reason()) {
+    case ESP_RST_POWERON:   return 1;
+    case ESP_RST_SW:        return 2;
+    case ESP_RST_PANIC:     return 3;
+    case ESP_RST_INT_WDT:
+    case ESP_RST_TASK_WDT:
+    case ESP_RST_WDT:       return 4;
+    case ESP_RST_BROWNOUT:  return 5;
+    case ESP_RST_DEEPSLEEP: return 6;
+    case ESP_RST_EXT:       return 7;
+    default:                return 0;
+  }
+}
+
+// ---- Configuration par LoRa (port 2 : trame du relevé suivie de ce bloc, voir docs/donnees.md) ----
+bool configLoraAEnvoyer(uint32_t periodeS) {
+  ouvrirNvsConfig();
+  secondesDepuisConfigLora += periodeS;
+  if (reglages.wifiActif()) return false;            // c'est le Wi-Fi qui publie la configuration
+  if (configEvtLora.isEmpty() && secondesDepuisConfigLora >= CONFIG_PERIODE_S) {
+    configEvtLora = "periodique";
+    nvsConfig.putString("evtl", configEvtLora);
+  }
+  return configEvtLora.length() > 0;
+}
+
+size_t ajouterConfigLora(uint8_t* t) {
+  size_t n = 0;
+  uint8_t evt = configEvtLora == "demarrage" ? 0 : configEvtLora == "changement" ? 1 : 2;
+  t[n++] = evt;
+  t[n++] = evt == 0 ? codeCauseRedemarrage() : 0;
+  int majeur = 0, mineur = 0, correctif = 0;
+  sscanf(FIRMWARE_VERSION, "%d.%d.%d", &majeur, &mineur, &correctif);
+  t[n++] = majeur; t[n++] = mineur; t[n++] = correctif;
+  t[n++] = (uint8_t)reglages.comm();
+  uint16_t releveMin = reglages.releveS() / 60, veilleMin = reglages.veilleS() / 60;
+  t[n++] = releveMin & 0xFF; t[n++] = releveMin >> 8;
+  t[n++] = veilleMin & 0xFF; t[n++] = veilleMin >> 8;
+#if CONFIG_IDF_TARGET_ESP32S3
+  t[n++] = (uint8_t)(int8_t)constrain(lroundf(temperatureRead()), -127L, 126L);
+#else
+  t[n++] = (uint8_t)(int8_t)127;                     // pas de capteur de puce
+#endif
+  t[n++] = reglages.journal() ? 0x01 : 0x00;
+  String nom = reglages.nom();
+  uint8_t l = (uint8_t)min((unsigned)nom.length(), (unsigned)NOM_LONGUEUR_MAX);
+  t[n++] = l;
+  memcpy(t + n, nom.c_str(), l);
+  n += l;
+  return n;
+}
+
+void configLoraEnvoyee() {
+  journalf("Configuration envoyée par LoRa (%s)\n", configEvtLora.c_str());
+  configEvtLora = "";
+  nvsConfig.remove("evtl");
+  secondesDepuisConfigLora = 0;
 }
 
 const char* causeRedemarrage() {
@@ -552,6 +642,7 @@ void cycleRapide(uint8_t sda, uint8_t scl, bool busPartage) {
   batterie.demarrer();
   releves.demarrer();
   enregistrerReleve();
+  enCycleRapide = true;
   if (reglages.loraActif()) publierLora();
   entrerEnVeille();
 }
