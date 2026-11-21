@@ -1,5 +1,5 @@
 // ==== Caravane =======================================================================
-// CaravaneDemo.ino — firmware CaravaneDemo, version 0.10.0 — dernière modification : 2026-11-21
+// CaravaneDemo.ino — firmware CaravaneDemo, version 0.10.1 — dernière modification : 2026-11-21
 // Auteur : Alexandre Phulpin (développement assisté par Claude)
 // Dépôt : https://github.com/alphulpin/Caravane
 // ====
@@ -296,6 +296,9 @@ void publierConfig() {
   e["secteur"]     = surSecteur;
   e["wifi_rssi"]   = WiFi.RSSI();
   e["en_marche_s"] = millis() / 1000;
+#if CONFIG_IDF_TARGET_ESP32S3
+  e["temp_puce_c"] = roundf(temperatureRead() * 10.0f) / 10.0f;   // capteur interne de l'ESP32-S3 (V3)
+#endif
   e["releves_a_publier"] = releves.aPublier();
   String corps;
   serializeJson(doc, corps);

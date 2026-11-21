@@ -1,5 +1,5 @@
 // ==== Caravane =======================================================================
-// Reglages.h — firmware CaravaneDemo, version 0.10.0 — dernière modification : 2026-11-21
+// Reglages.h — firmware CaravaneDemo, version 0.10.1 — dernière modification : 2026-11-21
 // Auteur : Alexandre Phulpin (développement assisté par Claude)
 // Dépôt : https://github.com/alphulpin/Caravane
 // ====

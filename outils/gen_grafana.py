@@ -116,6 +116,7 @@ panels = [
                  "  round((k.config->'etat'->>'vbat_mv')::numeric / 1000, 2) as \"LiPo (V)\",\n"
                  "  case (k.config->'etat'->>'secteur')::boolean when true then 'secteur' when false then 'batterie' end as \"alim.\",\n"
                  "  (k.config->'etat'->>'wifi_rssi')::int as \"Wi-Fi (dBm)\",\n"
+                 "  (k.config->'etat'->>'temp_puce_c')::numeric as \"puce (°C)\",\n"
                  "  (select string_agg(e.key || ' ×' || (e.value->>'pente') || ' ' || (e.value->>'decalage'), ', ' order by e.key)\n"
                  "     from jsonb_each(k.config->'etalonnage') e\n"
                  "    where (e.value->>'pente')::float <> 1 or (e.value->>'decalage')::float <> 0) as \"étalonnage (≠ défaut)\"\n"
