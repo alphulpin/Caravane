@@ -85,8 +85,45 @@ Le mode UDP ci-dessus suffit pour démarrer.
    - End device ID : par ex. `caravane-v3` > **Register end device**.
 3. Garder l'onglet **Live data** de l'appareil ouvert : c'est là qu'apparaîtront le « join » puis les relevés.
 
-Les étapes suivantes viennent avec le firmware LoRa de la V3 : saisie de l'AppKey par Bluetooth, trame binaire
-(`docs/donnees.md`), décodeur TTN (Payload formatters > Uplink), webhook vers Supabase.
+## 7. Décodeur des trames
+
+Dans l'application TTN : **Payload formatters > Uplink** > Formatter type **Custom Javascript formatter** >
+coller tout le contenu de `ttn/decodeur.js` > **Save changes**.
+
+Test possible sur la même page (« Test » : port 1, octets `01 70 11 01 00 00 3F D6 00 6F 0C 14 C2 01 08 00 95`) :
+on doit lire température 21,4 °C, humidité 55,5 %, pression 1013,2 hPa…
+
+## 8. Webhook vers Supabase
+
+1. Dans Supabase, SQL Editor : lancer `supabase/caravane_ttn.sql` (une seule fois ; relançable).
+2. Dans TTN : **Integrations > Webhooks > + Add webhook > Custom webhook** :
+
+| Champ | Valeur |
+|---|---|
+| Webhook ID | `supabase` |
+| Webhook format | JSON |
+| Base URL | `https://<ref-du-projet>.supabase.co/rest/v1/rpc` |
+| Additional headers | `apikey` = clé **publishable** ; `Authorization` = `Bearer ` + la même clé |
+| Enabled event types | cocher seulement **Uplink message**, chemin `/caravane_ttn` |
+
+3. **Add webhook**. À chaque trame, TTN appelle la fonction, qui range le relevé dans `caravane_releves` (source `lora`).
+   En cas d'échec, TTN l'indique sur la page du webhook (pastille rouge, message d'erreur).
+
+## 9. Carte V3
+
+1. Arduino IDE : installer la bibliothèque **RadioLib** de Jan Gromeš, **version 7.8.1** (Gestionnaire de bibliothèques,
+   choisir la version dans la liste ; la 8.0 a changé son interface).
+2. Téléverser le firmware sur la V3 (carte « Heltec WiFi LoRa 32(V3) »).
+3. Sur le téléphone, page Administration :
+   - section LoRaWAN : JoinEUI `0000000000000000`, **AppKey** copiée depuis TTN (appareil > Activation information) ;
+   - Mode de communication : **LoRa** (ou Wi-Fi + LoRa) > Enregistrer.
+4. La carte se connecte au réseau au relevé suivant (bouton « Relevé maintenant » pour ne pas attendre).
+   Dans TTN, onglet **Live data** de l'appareil : « Accept join request », puis « Forward uplink data message »
+   avec les valeurs décodées. Sur le téléphone, la ligne « LoRa (TTN) » passe à « connecté ».
+5. Journal série : `LoRa : connecté en … ms`, puis `LoRa : trame n°… envoyée`.
+
+Sur batterie (mode LoRa seul, pas de secteur), la carte dort entre deux relevés et garde sa session LoRaWAN :
+pas de nouvelle connexion à chaque réveil.
 
 ## En cas de souci
 
@@ -94,5 +131,8 @@ Les étapes suivantes viennent avec le firmware LoRa de la V3 : saisie de l'AppK
 |---|---|
 | SYS rouge | pas d'Internet : câble WAN, ou Wi-Fi client mal configuré |
 | SYS bleu clignotant | Internet OK mais TTN non joint : adresse serveur, ports 1700, EUI identique dans TTN |
+| Pas de « join » dans Live data | AppKey ou DevEUI différents de TTN ; carte trop loin ; journal : `pas de réponse` |
+| « DevNonce already used » dans TTN | la carte a été réinitialisée : appareil TTN > Settings > Network layer > Advanced MAC settings > cocher « Resets join nonces » le temps d’une connexion |
+| Webhook en erreur | clé Supabase, chemin `/caravane_ttn`, script `caravane_ttn.sql` non lancé |
 | Passerelle « Disconnected » dans TTN | mauvais cluster (eu1), EUI mal saisi, pare-feu de la box bloquant l'UDP sortant 1700 |
 | Plus d'accès à l'interface | se reconnecter au Wi-Fi dragino-xxxxxx (10.130.1.1) ; en dernier recours, bouton de réinitialisation |

@@ -1,5 +1,5 @@
 // ==== Caravane =======================================================================
-// Config.h — firmware CaravaneDemo, version 0.9.3 — dernière modification : 2026-11-21
+// Config.h — firmware CaravaneDemo, version 0.10.0 — dernière modification : 2026-11-21
 // Auteur : Alexandre Phulpin (développement assisté par Claude)
 // Dépôt : https://github.com/alphulpin/Caravane
 // ====
@@ -57,7 +57,7 @@ constexpr uint8_t BROCHE_BOUTON = 0;     // bouton USER/PRG, actif à l'état ba
 #define NOM_DEFAUT "Hello world"          // affiché tant que la carte n'a pas de nom
 #define SB_TABLE_DEFAUT "caravane_releves"
 #define SB_TABLE_CONFIG "caravane_config"   // configuration publiée au démarrage, à chaque changement et chaque jour
-#define FIRMWARE_VERSION "0.9.3"
+#define FIRMWARE_VERSION "0.10.0"
 constexpr uint32_t CONFIG_PERIODE_S = 24UL * 3600;  // battement de cœur de la configuration
 constexpr uint32_t INACTIVITE_DEFAUT_S = 5 * 60;   // avant mise en veille profonde
 constexpr uint32_t VEILLE_DEFAUT_S     = 15 * 60;  // durée de la veille profonde
@@ -100,6 +100,8 @@ enum class ModeComm : uint8_t { Aucun = 0, Wifi = 1, Lora = 2, WifiLora = 3 };
 #define CLE_SB_URL     "sb_url"        // https://<projet>.supabase.co
 #define CLE_SB_CLE     "sb_cle"        // clé API Supabase (jamais renvoyée)
 #define CLE_SB_TABLE   "sb_table"      // table de destination
+#define CLE_LORA_JOINEUI "lora_joineui"  // JoinEUI (AppEUI) LoRaWAN, 16 hexa (défaut 0000000000000000)
+#define CLE_LORA_APPKEY  "lora_appkey"   // AppKey LoRaWAN, 32 hexa (jamais renvoyée)
 #define CLE_BROCHES    "broches"       // {"sda":41,"scl":42,"secteur":7} ; -1 = défaut de la carte
 #define CLE_CMD        "cmd"           // "scan_wifi" | "releve" | "effacer_nom" | "effacer_releves" | "redemarrer"
 // Réponses seulement

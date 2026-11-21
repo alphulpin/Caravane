@@ -1,5 +1,5 @@
 // ==== Caravane =======================================================================
-// CaravaneDemo.ino — firmware CaravaneDemo, version 0.9.3 — dernière modification : 2026-11-21
+// CaravaneDemo.ino — firmware CaravaneDemo, version 0.10.0 — dernière modification : 2026-11-21
 // Auteur : Alexandre Phulpin (développement assisté par Claude)
 // Dépôt : https://github.com/alphulpin/Caravane
 // ====
@@ -27,6 +27,7 @@
 #include "esp_bt.h"
 #include "Config.h"
 #include "Journal.h"
+#include "Lora.h"
 #include "Reglages.h"
 #include "Horloge.h"
 #include "Identite.h"
@@ -44,6 +45,7 @@ Batterie batterie;
 Environnement env;
 Reseau reseau;
 Releves releves;
+Lora lora;
 
 String idCarte;                   // n° de série (adresse MAC), ex. "34B7DA5C1E20"
 String devEui;                    // identifiant LoRaWAN (V3)
@@ -184,9 +186,25 @@ void publierWifi() {
   journalf("Publication échouée (%d), nouvel essai dans %lu s\n", code, (unsigned long)(delaiNouvelEssai() / 1000));
 }
 
-// LoRa : seul le dernier relevé sera envoyé (à venir, après réception des passerelles).
-// Il sera alors marqué publié ; les plus anciens restent à publier par le Wi-Fi.
-void publierLora() {}
+// LoRa : seul le dernier relevé est envoyé (trame binaire, port 1). Sans Wi-Fi, il est alors
+// marqué publié ; avec le Wi-Fi aussi actif, c'est le Wi-Fi qui publie tout (Supabase ignore le
+// doublon envoyé par LoRa).
+void demarrerLora() {
+  if (!CARTE_LORA || lora.pret() || !reglages.loraActif() || !reglages.loraPret()) return;
+  lora.demarrer(devEui, reglages.loraJoinEui(), reglages.loraAppKey());
+}
+
+void publierLora() {
+  if (!CARTE_LORA) return;
+  demarrerLora();
+  if (!lora.pret()) return;
+  Releve r;
+  uint16_t index;
+  if (!releves.dernier(r, index)) return;
+  uint8_t trame[24];
+  size_t n = trameReleve(r, trame);
+  if (lora.envoyer(trame, n, 1) && !reglages.wifiActif()) releves.marquerPublies(&index, 1);
+}
 
 // ---------- Configuration publiée (jumeau numérique) ----------
 // Envoyée à part des mesures, dans la table caravane_config : au démarrage, à chaque changement
@@ -208,6 +226,7 @@ void remplirConfig(JsonObject c) {
   if (CARTE_LORA) c["dev_eui"] = devEui;
   c["firmware"]     = FIRMWARE_VERSION;
   c["comm"]         = Reglages::nomComm(reglages.comm());
+  if (CARTE_LORA) c["lora_joineui"] = reglages.loraJoinEui();
   c["releve_s"]     = reglages.releveS();
   c["inactivite_s"] = reglages.inactiviteS();
   c["veille_s"]     = reglages.veilleS();
@@ -327,6 +346,20 @@ String etatJson() {
   doc[CLE_SB_URL]     = reglages.sbUrl();
   doc[CLE_SB_TABLE]   = reglages.sbTable();
   doc["sb_cle_def"]   = reglages.sbCle().length() > 0;
+  if (CARTE_LORA) {
+    doc[CLE_LORA_JOINEUI] = reglages.loraJoinEui();
+    doc["lora_cle_def"]   = reglages.loraPret();
+    doc["lora_etat"]      = lora.texteEtat();
+    const EtatLora& l = lora.etat();
+    if (l.quandMs) {
+      JsonObject le = doc["lora_dernier"].to<JsonObject>();
+      le["code"]   = l.code;
+      le["age_s"]  = (millis() - l.quandMs) / 1000;
+      le["toa_ms"] = l.toaMs;
+      le["trames"] = l.trames;
+      if (l.rssi) { le["rssi"] = l.rssi; le["snr"] = l.snr; }
+    }
+  }
   JsonObject j = doc["releves"].to<JsonObject>();
   j["nombre"]    = releves.nombre();
   j["a_publier"] = releves.aPublier();
@@ -405,6 +438,11 @@ void traiterCommande(const String& ligne) {
   bool wifiChange = reglages.definirWifi(doc[CLE_WIFI_SSID] | "", doc[CLE_WIFI_MDP] | "");
   bool commChange = reglages.definirComm(doc[CLE_COMM] | "");
   reglages.definirSupabase(doc[CLE_SB_URL] | "", doc[CLE_SB_CLE] | "", doc[CLE_SB_TABLE] | "");
+  if (reglages.definirLora(doc[CLE_LORA_JOINEUI] | "", doc[CLE_LORA_APPKEY] | "")) {
+    lora.oublier(true);                              // nouvelle identité : nouvelle connexion au réseau
+    lora = Lora();
+    journalln("LoRa : identifiants changés, nouvelle connexion au prochain envoi");
+  }
   if (wifiChange && reglages.wifiActif()) reseau.arreter();      // reconnexion avec les nouveaux identifiants
   if (wifiChange || commChange) appliquerComm();
 
@@ -484,6 +522,7 @@ void entrerEnVeille() {
   Serial.flush();
   digitalWrite(BROCHE_LED, LOW);
   reseau.arreter();
+  lora.sauverSession();                              // la session LoRaWAN survit à la veille
   ecran.eteindre();                                  // coupe aussi Vext, donc les capteurs
   esp_sleep_enable_timer_wakeup((uint64_t)reglages.veilleS() * 1000000ULL);
   esp_sleep_enable_ext0_wakeup((gpio_num_t)BROCHE_BOUTON, 0);   // bouton USER
@@ -580,6 +619,7 @@ void setup() {
   configEvenement = nvsConfig.getString("evt", "");
   configAPublier("demarrage");
   enregistrerReleve();                               // un relevé à chaque démarrage
+  if (reglages.loraActif()) publierLora();
   derniereActiviteMs = millis();
   rafraichirEcran();
   journalln(etatJson());

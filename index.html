@@ -218,6 +218,7 @@ input[type=text]{font-family:var(--sans);font-weight:400}
       <div><dt>Relevés en mémoire</dt><dd id="aRel">--</dd></div>
       <div><dt>Wi-Fi</dt><dd id="aWifi">--</dd></div>
       <div><dt>Dernier envoi Supabase</dt><dd id="aEnvoi">--</dd></div>
+      <div id="aLoraLigne"><dt>LoRa (TTN)</dt><dd id="aLora">--</dd></div>
     </dl>
     <div class="avis" id="avisRedem" hidden>Broches modifiées : elles seront prises en compte au prochain redémarrage.</div>
 
@@ -258,6 +259,19 @@ input[type=text]{font-family:var(--sans);font-weight:400}
     <div class="champ">
       <label for="sbTable">Table</label>
       <input id="sbTable" type="text" autocomplete="off" style="grid-column:1/-1">
+    </div>
+
+    <div id="blocLora">
+      <p class="sous">LoRaWAN (The Things Network)</p>
+      <div class="pile">
+        <label for="loraJoin">JoinEUI (AppEUI)</label>
+        <input id="loraJoin" type="text" autocomplete="off" spellcheck="false" maxlength="23" placeholder="0000000000000000" style="font-family:monospace">
+      </div>
+      <div class="pile">
+        <label for="loraCle">AppKey</label>
+        <input id="loraCle" type="password" autocomplete="off" spellcheck="false" maxlength="47" placeholder="32 caractères hexadécimaux" style="font-family:monospace">
+        <small>À copier depuis la console TTN (appareil &gt; Activation information &gt; AppKey). Elle n'est jamais relue depuis la carte. Changer la clé relance la connexion au réseau.</small>
+      </div>
     </div>
     <div class="champ">
       <label for="releve">Période des relevés</label>
@@ -397,6 +411,19 @@ function afficherAdmin(m, remplir){
     $("aEnvoi").innerHTML = (ok ? e.nombre + " publié(s)" : e.code === -100 ? "Wi-Fi absent" : "échec (" + e.code + ")") + " <small>il y a " + age + "</small>";
   }
   for (const o of $("comm").options) if (o.value.includes("lora")) o.disabled = !m.lora_dispo;
+  $("blocLora").hidden = $("aLoraLigne").hidden = !m.lora_dispo;
+  if (m.lora_dispo) {
+    remplir("loraJoin", m.lora_joineui);
+    $("loraCle").placeholder = m.lora_cle_def ? "définie — inchangée si vide" : "32 caractères hexadécimaux";
+    const l = m.lora_dernier;
+    let t = m.lora_etat || "--";
+    if (l) {
+      const age = l.age_s < 120 ? l.age_s + " s" : Math.round(l.age_s / 60) + " min";
+      t += " <small>dernier envoi " + (l.code === 0 ? "OK" : "échec (" + l.code + ")") + " il y a " + age +
+           (l.trames ? ", trame n°" + l.trames : "") + (l.rssi ? ", " + l.rssi + " dBm" : "") + "</small>";
+    }
+    $("aLora").innerHTML = t;
+  }
   remplir("comm", m.comm);
   remplir("wifiSsid", m.wifi_ssid);
   $("wifiMdp").placeholder = m.wifi_mdp_def ? "défini — inchangé si vide" : "aucun";
@@ -522,7 +549,7 @@ function carteSimulee(){
   let c = {...defaut}, decalage = null;             // decalage nul = heure non réglée
   const a = {carte: "V3", lora_dispo: true, id_carte: "34B7DA5C1E20", dev_eui: "34B7DAFFFE5C1E20", comm: "aucun", wifi_ssid: "",
              wifi_mdp_def: false, wifi_etat: "inactif", sb_url: "", sb_table: "caravane_releves",
-             sb_cle_def: false, releves: {nombre: 37, a_publier: 37, capacite: 1000}, broches: {sda: 41, scl: 42, secteur: 7},
+             sb_cle_def: false, lora_joineui: "0000000000000000", lora_cle_def: false, lora_etat: "clé manquante", releves: {nombre: 37, a_publier: 37, capacite: 1000}, broches: {sda: 41, scl: 42, secteur: 7},
              broches_defaut: {sda: 41, scl: 42, secteur: 7}};
   const etat = () => ({...c, heure: decalage == null ? 0 : Math.round(Date.now() / 1000) + decalage,
                        vbat_mv: 3950 + Math.round(Math.random() * 40), secteur: false,
@@ -551,6 +578,9 @@ function carteSimulee(){
         if (m.sb_url) a.sb_url = m.sb_url;
         if (m.sb_cle) a.sb_cle_def = true;
         if (m.sb_table) a.sb_table = m.sb_table;
+        if (m.lora_joineui) a.lora_joineui = m.lora_joineui;
+        if (m.lora_appkey) { a.lora_cle_def = true; a.lora_etat = "pas encore connecté"; }
+        if (a.comm.includes("lora") && a.lora_cle_def) { a.lora_etat = "connecté"; a.lora_dernier = {code: 0, age_s: 3, toa_ms: 62, trames: 12, rssi: -71, snr: 8.5}; }
         if (m.broches) { for (const k in m.broches) a.broches[k] = m.broches[k] < 0 ? a.broches_defaut[k] : m.broches[k]; a.redemarrage_requis = true; }
         a.wifi_etat = a.comm.startsWith("wifi") ? (a.wifi_ssid ? "connecte" : "connexion") : "inactif";
         a.wifi_rssi = a.wifi_etat === "connecte" ? -58 : undefined;
@@ -643,7 +673,7 @@ $("btnEtalDefaut").addEventListener("click", () => {
   envoyer({etalonnage}, "etal");
 });
 
-const CHAMPS_ADMIN = ["comm","wifiSsid","sbUrl","sbTable","releve","bSda","bScl","bSect"];
+const CHAMPS_ADMIN = ["comm","wifiSsid","sbUrl","sbTable","releve","bSda","bScl","bSect","loraJoin"];
 $("btnScan").addEventListener("click", () => { note("noteAdmin", "Recherche des réseaux (quelques secondes)…"); envoyer({cmd: "scan_wifi"}, "scan"); });
 $("btnAdmin").addEventListener("click", () => {
   const ordre = {comm: $("comm").value};
@@ -656,6 +686,16 @@ $("btnAdmin").addEventListener("click", () => {
     ordre.sb_url = url;
   }
   if (cle) ordre.sb_cle = cle;
+  const hex = v => v.replace(/[\s:-]/g, "").toUpperCase();
+  const join = hex($("loraJoin").value), lcle = hex($("loraCle").value);
+  if (join) {
+    if (!/^[0-9A-F]{16}$/.test(join)) return note("noteAdmin", "JoinEUI : 16 caractères hexadécimaux.", "err");
+    ordre.lora_joineui = join;
+  }
+  if (lcle) {
+    if (!/^[0-9A-F]{32}$/.test(lcle)) return note("noteAdmin", "AppKey : 32 caractères hexadécimaux.", "err");
+    ordre.lora_appkey = lcle;
+  }
   if (table) ordre.sb_table = table;
   const per = parseFloat($("releve").value.replace(",", "."));
   if ($("releve").value !== "") {
@@ -663,7 +703,8 @@ $("btnAdmin").addEventListener("click", () => {
     ordre.releve_s = Math.round(per * 60);
   }
   if (ordre.comm.startsWith("wifi") && !ssid) return note("noteAdmin", "Choisissez d'abord un réseau Wi-Fi.", "err");
-  $("wifiMdp").value = ""; $("sbCle").value = "";
+  if (ordre.comm.includes("lora") && !lcle && $("loraCle").placeholder.startsWith("32")) return note("noteAdmin", "Saisissez d'abord l'AppKey LoRaWAN.", "err");
+  $("wifiMdp").value = ""; $("sbCle").value = ""; $("loraCle").value = "";
   note("noteAdmin", "Envoi…");
   envoyer(ordre, "admin");
 });

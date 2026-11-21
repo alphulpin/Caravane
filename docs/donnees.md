@@ -47,18 +47,18 @@ Contenu : nom, carte, DevEUI, version du firmware, mode de communication, pério
 
 Grandeurs actuelles : `temp_c`, `hum_pct`, `press_hpa`, `eco2_ppm`, `tvoc_ppb`, `vbat_mv` ; prévues : `bat12_mv`, `bat12_ma` (batterie caravane).
 
-## Trame LoRa (prévue, V3)
+## Trame LoRa (V3)
 
-Même destination, mais trame binaire compacte : temps d'antenne limité (1 % en Europe, environ 30 s par jour et par appareil sur TTN). Le décodeur TTN (« payload formatter ») la transforme en `{"releve_id":…,"secteur":…,"valeurs":{…}}` et le webhook écrit dans `caravane_releves` avec `source = 'lora'`. L'identité de la carte vient de TTN (DevEUI).
+Même destination, mais trame binaire compacte : temps d'antenne limité (1 % en Europe, environ 30 s par jour et par appareil sur TTN). Le décodeur TTN (`ttn/decodeur.js`) la transforme en `{"releve_id":…,"secteur":…,"valeurs":{…}}` ; le webhook TTN appelle la fonction Supabase `caravane_ttn` (`supabase/caravane_ttn.sql`), qui écrit dans `caravane_releves` avec `source = 'lora'`. L'identité de la carte vient du DevEUI (n° de série = DevEUI sans le `FFFE` central). La fonction ajoute aux valeurs la qualité radio de la meilleure passerelle : `lora_rssi` (dBm) et `lora_snr` (dB).
 
-Format envisagé (octets, petit-boutiste) :
+Port 1, octets en petit-boutiste (produit par `trameReleve()`, `Lora.cpp`) :
 
 | Octets | Champ |
 |---|---|
-| 1 | version du format |
-| 2 | n° de relevé (16 bits bas, recomposé côté serveur) |
+| 1 | version du format (1) |
+| 4 | n° de relevé (uint32) |
 | 1 | drapeaux : bit 0 secteur |
-| 1–2 | masque des grandeurs présentes (bit 7 = un 2ᵉ octet de masque suit) |
+| 1 | masque des grandeurs présentes (bit 7 réservé : 2ᵉ octet de masque) |
 | … | valeurs présentes, dans l'ordre des bits |
 
 | Bit | Grandeur | Codage |
@@ -69,8 +69,10 @@ Format envisagé (octets, petit-boutiste) :
 | 3 | `eco2_ppm` | uint16 |
 | 4 | `tvoc_ppb` | uint16 |
 | 5 | `vbat_mv` | uint8, (mV − 2500) / 10 |
-| 6 | `bat12_mv` | uint16 |
+| 6 | `bat12_mv` | uint16 (à venir) |
 
-Relevé complet ≈ 15 octets. L'heure n'est pas transmise : TTN horodate la réception, et seul le dernier relevé est envoyé en LoRa.
+Relevé complet : 17 octets. L'heure n'est pas transmise : `mesure_le` = heure de réception TTN. Seul le dernier relevé est envoyé en LoRa ; en mode LoRa seul il est alors marqué publié, en mode Wi-Fi + LoRa le Wi-Fi publie tout (le doublon LoRa est ignoré par Supabase).
 
-La configuration passe sur un autre port LoRaWAN (FPort 2 ; mesures sur FPort 1), seulement au démarrage, sur changement et une fois par jour, en binaire compact (version firmware, période, étalonnages différents du défaut) ; le nom de la carte n'est pas transmis par radio (il est connu de la base par le Wi-Fi ou saisi dans TTN). Le décodeur TTN aiguille chaque port vers sa table.
+Connexion OTAA (LoRaWAN 1.0.3) ; la session est gardée en mémoire RTC pendant la veille profonde (pas de nouvelle connexion à chaque réveil) et les nonces de connexion en flash. Après 3 échecs de connexion, les tentatives s'espacent (un réveil sur 4, 8, puis 16).
+
+À venir : la configuration sur un autre port LoRaWAN (FPort 2 ; mesures sur FPort 1), seulement au démarrage, sur changement et une fois par jour, en binaire compact (version firmware, période, étalonnages différents du défaut) ; le nom de la carte n'est pas transmis par radio (il est connu de la base par le Wi-Fi ou saisi dans TTN). Le décodeur TTN aiguille chaque port vers sa table.

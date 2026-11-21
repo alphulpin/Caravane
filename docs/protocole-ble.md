@@ -22,6 +22,8 @@ Un champ absent, vide (`""`) ou nul (`0`) ne modifie rien. Les durées et l'heur
 | `tz_min` | nombre | décalage local en minutes (`-new Date().getTimezoneOffset()`) | 60 | −720 à 840 |
 | `inactivite_s` | nombre | inactivité avant veille profonde (ou avant extinction de l'écran si la carte reste éveillée) | 300 | 30 à 3600 |
 | `veille_s` | nombre | durée de la veille profonde | 900 | 60 à 86400 |
+| `lora_joineui` | texte | JoinEUI LoRaWAN (16 hexa) | `0000000000000000` | |
+| `lora_appkey` | texte | AppKey LoRaWAN (32 hexa) ; jamais renvoyée (l'état indique `lora_cle_def`) ; un changement relance la connexion au réseau | — | |
 | `journal` | booléen | messages de suivi sur le port série (moniteur de l'IDE) ; conservé par `defaut` | true | |
 | `etalonnage` | objet | par grandeur `{"pente":p,"decalage":d}` : valeur = p × brute + d ; seules les grandeurs et clés envoyées changent ; conservé par `defaut` | pente 1, décalage 0 | pente 0,5 à 2 ; décalage ±10 °C, ±20 %, ±50 hPa, ±500 ppm/ppb/mV |
 | `releve_s` | nombre | période des relevés quand la carte reste éveillée (secteur ou Wi-Fi) ; sur batterie, un relevé à chaque réveil | 900 | 60 à 86400 |
@@ -88,3 +90,9 @@ Exemple : `{"etalonnage":{"temp_c":{"decalage":-1.5},"hum_pct":{"pente":1.03,"de
 Grandeurs : `temp_c`, `hum_pct`, `press_hpa`, `eco2_ppm`, `tvoc_ppb`, `vbat_mv`. L'état renvoyé
 contient toujours l'objet `etalonnage` complet. Les relevés sont enregistrés corrigés ; tout
 changement d'étalonnage est publié dans la table `caravane_config` (voir `donnees.md`).
+
+## État LoRa (V3)
+
+L'état contient `lora_joineui`, `lora_cle_def` (AppKey saisie), `lora_etat` (« connecté », « pas encore connecté »,
+« non connecté (code) », « clé manquante ») et, après un premier envoi, `lora_dernier` :
+`{"code":0,"age_s":12,"toa_ms":62,"trames":12,"rssi":-71,"snr":8.5}` (rssi/snr seulement si le réseau a répondu).

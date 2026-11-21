@@ -17,6 +17,8 @@ Domotique de caravane sur carte Heltec (ESP32) : surveillance de l'alimentation 
 | `docs/grafana.md` | Visualisation des relevés dans Grafana Cloud, pas à pas. |
 | `supabase/caravane_agregats.sql` | Agrégats horaires et journaliers, conservation des relevés bruts (1 an), tâches planifiées `pg_cron`. À lancer après `caravane_releves.sql`. |
 | `docs/donnees.md` | Modèle de données et trame LoRa prévue. |
+| `supabase/caravane_ttn.sql` | Fonction appelée par le webhook TTN : range les relevés LoRa dans `caravane_releves`. |
+| `ttn/decodeur.js` | Décodeur TTN des trames LoRa (Payload formatters > Uplink). |
 | `docs/passerelle-ttn.md` | Mise en service de la passerelle Dragino LPS8N et de l’application TTN. |
 | `outils/gen_grafana.py` | Génère le tableau de bord Grafana. |
 
@@ -25,7 +27,7 @@ Domotique de caravane sur carte Heltec (ESP32) : surveillance de l'alimentation 
 ## Firmware
 
 - IDE Arduino 2.x, paquet de cartes **esp32 d'Espressif 3.x**.
-- Bibliothèques : **U8g2** (olikraus) et **ArduinoJson** (Benoit Blanchon, v7).
+- Bibliothèques : **U8g2** (olikraus), **ArduinoJson** (Benoit Blanchon, v7) et **RadioLib** (Jan Gromeš, **7.8.1**, pour le LoRa de la V3).
 - Carte à choisir dans l'IDE :
 
 | Carte | Menu Tools > Board | Partition Scheme |

@@ -1,5 +1,5 @@
 // ==== Caravane =======================================================================
-// Reglages.cpp — firmware CaravaneDemo, version 0.9.3 — dernière modification : 2026-11-19
+// Reglages.cpp — firmware CaravaneDemo, version 0.10.0 — dernière modification : 2026-11-21
 // Auteur : Alexandre Phulpin (développement assisté par Claude)
 // Dépôt : https://github.com/alphulpin/Caravane
 // ====
@@ -32,6 +32,8 @@ void Reglages::charger() {
   _wifiMdp     = _nvs.getString("wmdp", "");
   _sbUrl       = _nvs.getString("sburl", "");
   _sbCle       = _nvs.getString("sbcle", "");
+  _loraJoin    = _nvs.getString("ljoin", "0000000000000000");
+  _loraCle     = _nvs.getString("lcle", "");
   _sbTable     = _nvs.getString("sbtab", SB_TABLE_DEFAUT);
   if (_sbTable == "caravane_mesures") {          // ancienne table « une colonne par capteur »
     _sbTable = SB_TABLE_DEFAUT;
@@ -145,6 +147,25 @@ bool Reglages::definirSupabase(const String& url, const String& cle, const Strin
   if (u.length() && u != _sbUrl)             { _sbUrl = u;       _nvs.putString("sburl", u);     change = true; }
   if (cle.length() && cle != _sbCle)         { _sbCle = cle;     _nvs.putString("sbcle", cle);   change = true; }
   if (table.length() && table != _sbTable)   { _sbTable = table; _nvs.putString("sbtab", table); change = true; }
+  return change;
+}
+
+static bool hexadecimal(String& v, size_t n) {
+  v.trim();
+  v.replace(" ", "");
+  v.replace(":", "");
+  v.replace("-", "");
+  v.toUpperCase();
+  if (v.length() != n) return false;
+  for (size_t i = 0; i < n; i++) if (!isxdigit(v[i])) return false;
+  return true;
+}
+
+bool Reglages::definirLora(const String& joinEui, const String& appKey) {
+  bool change = false;
+  String j = joinEui, k = appKey;
+  if (j.length() && hexadecimal(j, 16) && j != _loraJoin) { _loraJoin = j; _nvs.putString("ljoin", j); change = true; }
+  if (k.length() && hexadecimal(k, 32) && k != _loraCle)  { _loraCle = k;  _nvs.putString("lcle", k);  change = true; }
   return change;
 }
 

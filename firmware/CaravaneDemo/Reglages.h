@@ -1,5 +1,5 @@
 // ==== Caravane =======================================================================
-// Reglages.h — firmware CaravaneDemo, version 0.9.3 — dernière modification : 2026-11-19
+// Reglages.h — firmware CaravaneDemo, version 0.10.0 — dernière modification : 2026-11-21
 // Auteur : Alexandre Phulpin (développement assisté par Claude)
 // Dépôt : https://github.com/alphulpin/Caravane
 // ====
@@ -50,6 +50,11 @@ public:
   const String& sbCle() const    { return _sbCle; }
   const String& sbTable() const  { return _sbTable; }
   bool supabasePret() const      { return _sbUrl.length() && _sbCle.length() && _sbTable.length(); }
+  const String& loraJoinEui() const { return _loraJoin; }
+  const String& loraAppKey() const  { return _loraCle; }
+  bool loraPret() const             { return _loraCle.length() == 32; }
+  // Hexadécimal attendu (16 et 32 caractères) ; vide = pas de changement. Renvoie true si changé.
+  bool definirLora(const String& joinEui, const String& appKey);
 
   uint8_t capteursSda() const { return _sda < 0 ? DEFAUT_CAPTEURS_SDA : _sda; }
   uint8_t capteursScl() const { return _scl < 0 ? DEFAUT_CAPTEURS_SCL : _scl; }
@@ -65,6 +70,6 @@ private:
   int16_t  _fuseauMin = 0;
   Etalonnage _etal;
   ModeComm _comm = ModeComm::Aucun;
-  String   _wifiSsid, _wifiMdp, _sbUrl, _sbCle, _sbTable;
+  String   _wifiSsid, _wifiMdp, _sbUrl, _sbCle, _sbTable, _loraJoin, _loraCle;
   int8_t   _sda = -1, _scl = -1, _secteur = -1;
 };
