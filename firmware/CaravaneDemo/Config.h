@@ -1,5 +1,5 @@
 // ==== Caravane =======================================================================
-// Config.h — firmware CaravaneDemo, version 0.10.2 — dernière modification : 2026-11-21
+// Config.h — firmware CaravaneDemo, version 0.10.3 — dernière modification : 2026-11-21
 // Auteur : Alexandre Phulpin (développement assisté par Claude)
 // Dépôt : https://github.com/alphulpin/Caravane
 // ====
@@ -57,7 +57,7 @@ constexpr uint8_t BROCHE_BOUTON = 0;     // bouton USER/PRG, actif à l'état ba
 #define NOM_DEFAUT "Hello world"          // affiché tant que la carte n'a pas de nom
 #define SB_TABLE_DEFAUT "caravane_releves"
 #define SB_TABLE_CONFIG "caravane_config"   // configuration publiée au démarrage, à chaque changement et chaque jour
-#define FIRMWARE_VERSION "0.10.2"
+#define FIRMWARE_VERSION "0.10.3"
 constexpr uint32_t CONFIG_PERIODE_S = 24UL * 3600;  // battement de cœur de la configuration
 constexpr uint32_t INACTIVITE_DEFAUT_S = 5 * 60;   // avant mise en veille profonde
 constexpr uint32_t VEILLE_DEFAUT_S     = 15 * 60;  // durée de la veille profonde

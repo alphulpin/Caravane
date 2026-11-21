@@ -1,5 +1,5 @@
 // ==== Caravane =======================================================================
-// CaravaneDemo.ino — firmware CaravaneDemo, version 0.10.2 — dernière modification : 2026-11-21
+// CaravaneDemo.ino — firmware CaravaneDemo, version 0.10.3 — dernière modification : 2026-11-21
 // Auteur : Alexandre Phulpin (développement assisté par Claude)
 // Dépôt : https://github.com/alphulpin/Caravane
 // ====
@@ -275,7 +275,8 @@ bool nvsConfigOuvert = false;
 
 void ouvrirNvsConfig() {
   if (nvsConfigOuvert) return;
-  ouvrirNvsConfig();
+  nvsConfig.begin("caravane_cfg", false);
+  configEvenement = nvsConfig.getString("evt", "");
   configEvtLora   = nvsConfig.getString("evtl", "");
   nvsConfigOuvert = true;
 }
@@ -709,10 +710,10 @@ void setup() {
   journalf("Mémoire libre après Bluetooth : %u o (bloc max %u o)\n",
                 (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
   appliquerComm();                                   // Wi-Fi et qualité d'air selon le mode
-  nvsConfig.begin("caravane_cfg", false);
-  configEvenement = nvsConfig.getString("evt", "");
+  ouvrirNvsConfig();
   configAPublier("demarrage");
   enregistrerReleve();                               // un relevé à chaque démarrage
+  rafraichirEcran();                                 // avant le LoRa : la connexion prend quelques secondes
   if (reglages.loraActif()) publierLora();
   derniereActiviteMs = millis();
   rafraichirEcran();
