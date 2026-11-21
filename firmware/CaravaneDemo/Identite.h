@@ -1,5 +1,5 @@
 // ==== Caravane =======================================================================
-// Identite.h — firmware CaravaneDemo, version 0.9.2 — dernière modification : 2026-11-17
+// Identite.h — firmware CaravaneDemo, version 0.9.3 — dernière modification : 2026-11-17
 // Auteur : Alexandre Phulpin (développement assisté par Claude)
 // Dépôt : https://github.com/alphulpin/Caravane
 // ====

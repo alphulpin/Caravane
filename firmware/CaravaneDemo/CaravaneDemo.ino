@@ -1,5 +1,5 @@
 // ==== Caravane =======================================================================
-// CaravaneDemo.ino — firmware CaravaneDemo, version 0.9.2 — dernière modification : 2026-11-19
+// CaravaneDemo.ino — firmware CaravaneDemo, version 0.9.3 — dernière modification : 2026-11-21
 // Auteur : Alexandre Phulpin (développement assisté par Claude)
 // Dépôt : https://github.com/alphulpin/Caravane
 // ====
@@ -270,6 +270,14 @@ void publierConfig() {
   JsonObject c = o["config"].to<JsonObject>();
   remplirConfig(c);
   if (configEvenement == "demarrage") c["cause"] = causeRedemarrage();
+  // État de santé au moment de l'envoi (hors empreinte : ne déclenche pas de « changement »)
+  JsonObject e = c["etat"].to<JsonObject>();
+  vbatMv = lireVbat();
+  if (vbatMv) e["vbat_mv"] = vbatMv;               // tension LiPo de la carte (V3)
+  e["secteur"]     = surSecteur;
+  e["wifi_rssi"]   = WiFi.RSSI();
+  e["en_marche_s"] = millis() / 1000;
+  e["releves_a_publier"] = releves.aPublier();
   String corps;
   serializeJson(doc, corps);
   reseau.envoyerSupabase(reglages.sbUrl(), reglages.sbCle(), SB_TABLE_CONFIG, corps, 1);
